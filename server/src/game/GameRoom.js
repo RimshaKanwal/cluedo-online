@@ -238,6 +238,9 @@ export class GameRoom {
     }
 
     this.turnState.hasMoved = true;
+    // Out in a corridor there's nothing else to do, so the turn ends here.
+    // Landing in a room keeps the turn open to suggest or accuse.
+    if (!player.position.room) this.advanceTurn();
     return player;
   }
 
@@ -304,6 +307,7 @@ export class GameRoom {
     const suggesterId = pending.by;
     this.log.push({ type: "system", message: "No one could disprove that suggestion!" });
     this.pendingSuggestion = null;
+    this.advanceTurn(); // the suggestion was the suggester's action — end their turn
     return { privateReveal: { suggesterId, shownCard: null } };
   }
 
@@ -322,8 +326,10 @@ export class GameRoom {
       if (!card) throw new Error("You don't hold that card");
       const suggester = this.players.find((p) => p.id === pending.by);
       this.log.push({ type: "system", message: `${responder.name} disproved the suggestion by showing a card to ${suggester.name}.` });
+      const reveal = { suggesterId: pending.by, shownCard: { type: card.type, value: card.value }, byName: responder.name };
       this.pendingSuggestion = null;
-      return { privateReveal: { suggesterId: pending.by, shownCard: { type: card.type, value: card.value }, byName: responder.name } };
+      this.advanceTurn(); // suggestion resolved — end the suggester's turn
+      return { privateReveal: reveal };
     }
 
     // action === "pass"
