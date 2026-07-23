@@ -1,7 +1,24 @@
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+}
+
 .app-shell {
-  max-width: 1200px;
+  max-width: 1500px;
+  height: 100vh;
   margin: 0 auto;
-  padding: 16px 20px 60px;
+  padding: 8px 16px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.app-shell > main {
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .app-header {
@@ -9,7 +26,8 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 20px;
+  margin-bottom: 6px;
+  flex: 0 0 auto;
 }
 
 .app-header h1 {
@@ -200,19 +218,85 @@ button.secondary {
   color: white;
 }
 
-.game-layout {
-  display: grid;
-  grid-template-columns: 2fr 1fr;
+/* ── Game screen: board (with seated players) + side drawer ─────────── */
+.game-screen {
+  display: flex;
   gap: 16px;
+  height: 100%;
+  min-height: 0;
 }
 
-.notepad-card {
-  grid-column: 1 / -1;
+.table-area {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.board-table {
+  position: relative;
+  padding: 84px 74px;
+  flex: 0 0 auto;
+}
+
+/* Seated player avatars ringing the board, placed in turn order. */
+.seat-avatar {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 96px;
+  text-align: center;
+  z-index: 3;
+  transition: transform 0.15s;
+}
+
+.seat-face {
+  width: 42px;
+  height: 42px;
+  margin: 0 auto;
+  border-radius: 50%;
+  background: var(--pc);
+  border: 3px solid color-mix(in srgb, var(--pc) 60%, #000 40%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.4rem;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+.seat-avatar.current .seat-face {
+  border-color: #ffd24a;
+  box-shadow: 0 0 0 3px #ffd24a, 0 0 14px #ffd24a99;
+  transform: scale(1.12);
+}
+
+.seat-avatar.eliminated {
+  opacity: 0.45;
+  filter: grayscale(1);
+}
+
+.seat-name {
+  font-size: 0.72rem;
+  font-weight: 700;
+  margin-top: 3px;
+  line-height: 1.05;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.seat-cardcount {
+  font-size: 0.62rem;
+  opacity: 0.8;
 }
 
 .board-wrap {
-  margin: 16px 0;
-  overflow: auto;
+  border-radius: 12px;
+  padding: 8px;
+  background:
+    radial-gradient(circle at 50% 40%, #3a2f45, #241d2c 70%);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45), inset 0 0 60px rgba(0, 0, 0, 0.5);
 }
 
 .board-cells {
@@ -223,30 +307,40 @@ button.secondary {
 
 .room-block {
   border-radius: 8px;
-  border: 2px solid color-mix(in srgb, canvas 45%, canvastext 55%);
-  background: color-mix(in srgb, #8a6d3b 22%, canvas 78%);
+  border: 2px solid color-mix(in srgb, var(--rc) 70%, #000 30%);
+  background:
+    radial-gradient(circle at 30% 25%, color-mix(in srgb, var(--rc) 65%, #000 35%), color-mix(in srgb, var(--rc) 42%, #000 58%));
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: 2px;
   padding: 4px;
   overflow: hidden;
   margin: 1px;
+  position: relative;
+  color: #fff;
+}
+
+.room-emoji {
+  font-size: 1.5rem;
+  line-height: 1;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
 }
 
 .room-block.reachable {
   cursor: pointer;
-  border-color: #4f6df5;
-  background: color-mix(in srgb, #4f6df5 22%, canvas 78%);
-  box-shadow: 0 0 0 2px #4f6df5 inset;
+  border-color: #ffd24a;
+  box-shadow: 0 0 0 2px #ffd24a inset, 0 0 12px #ffd24a88;
 }
 
 .room-name {
-  font-weight: 700;
-  font-size: 0.72rem;
+  font-weight: 800;
+  font-size: 0.62rem;
   text-align: center;
-  line-height: 1.1;
+  line-height: 1.05;
+  letter-spacing: 0.3px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
 }
 
 .occupant-row {
@@ -264,118 +358,169 @@ button.secondary {
 
 .corridor-cell {
   border-radius: 2px;
-  background: color-mix(in srgb, canvas 86%, canvastext 14%);
+  background: repeating-linear-gradient(45deg, #d8d2c4, #d8d2c4 4px, #cec7b7 4px, #cec7b7 8px);
 }
 
 .corridor-cell.reachable {
   cursor: pointer;
-  background: color-mix(in srgb, #4f6df5 45%, canvas 55%);
-  box-shadow: 0 0 0 1px #4f6df5 inset;
+  background: #ffe89a;
+  box-shadow: 0 0 0 1px #e0a800 inset;
+  animation: pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  50% { box-shadow: 0 0 0 2px #e0a800 inset, 0 0 6px #ffd24a; }
 }
 
 .door-cell {
-  background: color-mix(in srgb, #8a6d3b 40%, canvas 60%);
+  background: #7a5230;
   border-radius: 1px;
 }
 
 .occupant-token {
-  width: 18px;
-  height: 18px;
+  width: 15px;
+  height: 15px;
   border-radius: 50%;
-  background: #d64550;
   color: white;
-  font-size: 0.62rem;
-  font-weight: 700;
+  font-size: 0.6rem;
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid rgba(0, 0, 0, 0.3);
+  border: 1.5px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
 }
 
-.occupant-token.small {
-  width: 18px;
-  height: 18px;
-  font-size: 0.6rem;
+.room-block .occupant-token {
+  width: 20px;
+  height: 20px;
+  font-size: 0.8rem;
 }
 
-.movement-panel {
+/* Status + controls under the board */
+.status-line {
+  flex: 0 0 auto;
+  font-size: 0.9rem;
+  padding: 6px 14px;
+  border-radius: 20px;
+  background: color-mix(in srgb, canvas 84%, canvastext 16%);
+  max-width: 100%;
+}
+
+.controls-bar {
+  flex: 0 0 auto;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
-  margin: 12px 0;
+  justify-content: center;
+  gap: 8px;
 }
 
-.movement-panel button {
+.controls-bar button {
   padding: 8px 14px;
   border-radius: 8px;
   cursor: pointer;
   font-weight: 600;
+  border: 1px solid color-mix(in srgb, canvas 55%, canvastext 45%);
+  background: color-mix(in srgb, canvas 90%, canvastext 10%);
 }
 
-.movement-panel button:not(.primary) {
-  border: 1px solid color-mix(in srgb, canvas 60%, canvastext 40%);
-  background: transparent;
+.controls-bar button.primary {
+  border: none;
 }
 
-.dice-value {
-  font-weight: 700;
-  font-size: 1.1rem;
-  padding: 4px 10px;
-  border-radius: 8px;
-  background: color-mix(in srgb, #4f6df5 15%, canvas 85%);
-}
-
-.action-row {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.action-row button {
-  padding: 8px 14px;
-  border-radius: 8px;
-  border: 1px solid color-mix(in srgb, canvas 60%, canvastext 40%);
-  cursor: pointer;
-  font-weight: 600;
-}
-
-.action-row button:disabled {
-  opacity: 0.5;
+.controls-bar button:disabled {
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
-.result-banner {
-  margin-top: 14px;
-  padding: 10px 14px;
-  border-radius: 8px;
-  background: color-mix(in srgb, #4f6df5 15%, canvas 85%);
+.dice-btn {
+  font-size: 1rem;
 }
 
-.hand-list {
-  list-style: none;
-  padding: 0;
+.dice-value {
+  font-weight: 800;
+  font-size: 1.1rem;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: #ffd24a;
+  color: #222;
+}
+
+/* Right drawer */
+.side-drawer {
+  flex: 0 0 330px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.drawer-hand h4 {
+  margin: 0 0 6px;
+}
+
+.hand-cards {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin: 0 0 16px;
 }
 
-.hand-card {
-  padding: 6px 10px;
-  border-radius: 6px;
-  font-size: 0.8rem;
-  font-weight: 600;
+.play-card {
+  width: 62px;
+  height: 88px;
+  border-radius: 8px;
+  background: linear-gradient(160deg, color-mix(in srgb, var(--cc) 90%, #fff 10%), color-mix(in srgb, var(--cc) 70%, #000 30%));
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 4px;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.35);
+  border: 2px solid rgba(255, 255, 255, 0.6);
+}
+
+.play-card-icon {
+  font-size: 1.7rem;
+}
+
+.play-card-name {
+  font-size: 0.6rem;
+  font-weight: 700;
+  text-align: center;
+  line-height: 1.05;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.show-card-btn {
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: none;
+  background: #4f6df5;
   color: white;
+  font-weight: 700;
+  cursor: pointer;
 }
 
-.hand-card-suspect { background: #d64550; }
-.hand-card-weapon { background: #3f7d4f; }
-.hand-card-room { background: #4f6df5; }
+.drawer-tabs {
+  display: flex;
+  gap: 6px;
+  flex: 0 0 auto;
+}
 
-.game-log {
-  max-height: 220px;
-  overflow-y: auto;
+.drawer-tabs .tab {
+  flex: 1;
+  padding: 6px;
+}
+
+.drawer-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid color-mix(in srgb, canvas 80%, canvastext 20%);
+  border-radius: 10px;
+  padding: 10px;
 }
 
 .game-log ul {
@@ -388,10 +533,20 @@ button.secondary {
 }
 
 .game-log li {
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   padding: 6px 8px;
   border-radius: 6px;
   background: color-mix(in srgb, canvas 85%, canvastext 15%);
+}
+
+.finished-card {
+  max-width: 520px;
+  margin: 40px auto;
+  text-align: center;
+}
+
+.finished-winner {
+  font-size: 1.3rem;
 }
 
 .notepad-scroll {

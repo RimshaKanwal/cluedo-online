@@ -426,6 +426,7 @@ export class GameRoom {
         cards: p.id === forPlayerId ? p.cards : undefined,
       })),
       currentPlayerId: this.status === "playing" ? this.currentPlayerId : null,
+      turnOrder: this.status === "playing" ? this.turnOrder : null,
       log: this.log.slice(-50),
       winnerId: this.winnerId,
       solution: this.status === "finished" ? this.solution : null,
