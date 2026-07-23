@@ -26,44 +26,79 @@ const CLASSIC_WEAPONS = [
 
 const EXPANDED_WEAPONS = [...CLASSIC_WEAPONS, "Poison", "Bow and Arrow"];
 
-// Rooms stay fixed regardless of player count.
-export const ROOMS = [
-  "Study",
-  "Hall",
-  "Lounge",
-  "Library",
-  "Billiard Room",
-  "Dining Room",
-  "Conservatory",
-  "Ballroom",
-  "Kitchen",
-];
+// ── Board geometry ──────────────────────────────────────────────────────
+// The board is a 2D tile grid modeled on the physical Cluedo board: nine
+// rooms (plus two extra for 7-8 players) arranged around an open field of
+// corridor squares. Players move square-by-square with a die roll and enter
+// rooms through doors. Rooms are authored as rectangles + door cells here;
+// `buildBoard()` rasterizes them into a grid the client renders directly.
 
-// 3x3 room grid matching the physical board's layout & connectivity.
-export const ROOM_LAYOUT = {
-  Kitchen: { row: 0, col: 0 },
-  Ballroom: { row: 0, col: 1 },
-  Conservatory: { row: 0, col: 2 },
-  "Dining Room": { row: 1, col: 0 },
-  "Billiard Room": { row: 1, col: 1 },
-  Library: { row: 1, col: 2 },
-  Lounge: { row: 2, col: 0 },
-  Hall: { row: 2, col: 1 },
-  Study: { row: 2, col: 2 },
+export const GRID = { rows: 25, cols: 24 };
+
+// Each room: rect is inclusive {r0,r1,c0,c1}; doors list the room-edge cell
+// (rendered as a gap in the wall) and its `entry` — the corridor square just
+// outside, which is where you step in/out.
+const CLASSIC_ROOM_DEFS = {
+  Kitchen: { rect: { r0: 1, r1: 5, c0: 1, c1: 5 }, doors: [{ cell: { r: 5, c: 3 }, entry: { r: 6, c: 3 } }] },
+  Ballroom: {
+    rect: { r0: 1, r1: 6, c0: 9, c1: 15 },
+    doors: [
+      { cell: { r: 6, c: 10 }, entry: { r: 7, c: 10 } },
+      { cell: { r: 6, c: 14 }, entry: { r: 7, c: 14 } },
+    ],
+  },
+  Conservatory: { rect: { r0: 1, r1: 4, c0: 18, c1: 22 }, doors: [{ cell: { r: 4, c: 20 }, entry: { r: 5, c: 20 } }] },
+  "Dining Room": {
+    rect: { r0: 9, r1: 14, c0: 1, c1: 6 },
+    doors: [
+      { cell: { r: 11, c: 6 }, entry: { r: 11, c: 7 } },
+      { cell: { r: 9, c: 4 }, entry: { r: 8, c: 4 } },
+    ],
+  },
+  "Billiard Room": {
+    rect: { r0: 8, r1: 11, c0: 18, c1: 22 },
+    doors: [
+      { cell: { r: 10, c: 18 }, entry: { r: 10, c: 17 } },
+      { cell: { r: 11, c: 20 }, entry: { r: 12, c: 20 } },
+    ],
+  },
+  Library: {
+    rect: { r0: 14, r1: 17, c0: 17, c1: 22 },
+    doors: [
+      { cell: { r: 15, c: 17 }, entry: { r: 15, c: 16 } },
+      { cell: { r: 14, c: 19 }, entry: { r: 13, c: 19 } },
+    ],
+  },
+  Lounge: { rect: { r0: 19, r1: 23, c0: 1, c1: 6 }, doors: [{ cell: { r: 19, c: 4 }, entry: { r: 18, c: 4 } }] },
+  Hall: {
+    rect: { r0: 18, r1: 23, c0: 10, c1: 14 },
+    doors: [
+      { cell: { r: 18, c: 11 }, entry: { r: 17, c: 11 } },
+      { cell: { r: 18, c: 13 }, entry: { r: 17, c: 13 } },
+    ],
+  },
+  Study: { rect: { r0: 20, r1: 23, c0: 18, c1: 22 }, doors: [{ cell: { r: 20, c: 20 }, entry: { r: 19, c: 20 } }] },
 };
 
-// Real walkable hallways (orthogonal room-pairs only).
-export const REAL_CORRIDORS = {
-  Study: ["Hall", "Library"],
-  Hall: ["Study", "Lounge", "Billiard Room"],
-  Lounge: ["Hall", "Dining Room"],
-  Library: ["Study", "Billiard Room", "Conservatory"],
-  "Billiard Room": ["Hall", "Library", "Dining Room", "Ballroom"],
-  "Dining Room": ["Lounge", "Billiard Room", "Kitchen"],
-  Conservatory: ["Library", "Ballroom"],
-  Ballroom: ["Billiard Room", "Conservatory", "Kitchen"],
-  Kitchen: ["Dining Room", "Ballroom"],
+// Extra rooms activated only for 7-8 players.
+const EXTRA_ROOM_DEFS = {
+  Cellar: {
+    rect: { r0: 10, r1: 15, c0: 9, c1: 14 },
+    doors: [
+      { cell: { r: 10, c: 11 }, entry: { r: 9, c: 11 } },
+      { cell: { r: 15, c: 12 }, entry: { r: 16, c: 12 } },
+      { cell: { r: 12, c: 9 }, entry: { r: 12, c: 8 } },
+      { cell: { r: 13, c: 14 }, entry: { r: 13, c: 15 } },
+    ],
+  },
+  "Trophy Room": {
+    rect: { r0: 15, r1: 17, c0: 1, c1: 5 },
+    doors: [{ cell: { r: 16, c: 5 }, entry: { r: 16, c: 6 } }],
+  },
 };
+
+// Center cellar stays a dead zone for classic (3-6 player) games.
+const CENTER_CELLAR = { r0: 10, r1: 15, c0: 9, c1: 14 };
 
 // Diagonal secret passages between opposite corner rooms — instant, no dice.
 export const SECRET_PASSAGES = {
@@ -73,63 +108,68 @@ export const SECRET_PASSAGES = {
   Conservatory: "Lounge",
 };
 
-// Backwards-compatible full adjacency (corridors + secret passages), kept
-// for any code that just needs "can I eventually reach this room".
-export const ROOM_ADJACENCY = Object.fromEntries(
-  ROOMS.map((room) => [
-    room,
-    [...(REAL_CORRIDORS[room] || []), ...(SECRET_PASSAGES[room] ? [SECRET_PASSAGES[room]] : [])],
-  ])
-);
+// Where each character's token starts — an edge corridor square.
+export const START_POSITIONS = {
+  "Miss Scarlett": { r: 24, c: 7 },
+  "Colonel Mustard": { r: 17, c: 23 },
+  "Mrs. White": { r: 0, c: 9 },
+  "Reverend Green": { r: 0, c: 14 },
+  "Mrs. Peacock": { r: 6, c: 23 },
+  "Professor Plum": { r: 8, c: 0 },
+  "Dr. Orchid": { r: 24, c: 16 },
+  "Monsieur Brunette": { r: 0, c: 5 },
+};
 
-export const CORRIDOR_LENGTH = 3; // walkable squares between two adjacent rooms' doors
+export const CLASSIC_ROOMS = Object.keys(CLASSIC_ROOM_DEFS);
+export const EXPANDED_ROOMS = [...CLASSIC_ROOMS, ...Object.keys(EXTRA_ROOM_DEFS)];
+export const ROOMS = CLASSIC_ROOMS; // default card set
 
-// Builds the full board geometry: a grid coordinate for every room plus the
-// intermediate corridor squares along each real hallway. Computed once and
-// exported as a static object — the client renders directly from this.
-function buildBoard() {
-  const spacing = CORRIDOR_LENGTH + 1;
-  const rooms = {};
-  for (const [room, { row, col }] of Object.entries(ROOM_LAYOUT)) {
-    rooms[room] = { row: row * spacing, col: col * spacing };
-  }
+function roomDefsFor(playerCount) {
+  return playerCount > 6 ? { ...CLASSIC_ROOM_DEFS, ...EXTRA_ROOM_DEFS } : CLASSIC_ROOM_DEFS;
+}
 
-  const corridors = {};
-  const seen = new Set();
-  for (const [room, neighbors] of Object.entries(REAL_CORRIDORS)) {
-    for (const neighbor of neighbors) {
-      const key = [room, neighbor].sort().join("|");
-      if (seen.has(key)) continue;
-      seen.add(key);
+// Rasterizes the room rectangles into a full tile grid. Returns the cell
+// matrix plus a per-room summary (rect, door cells, corridor entry cells).
+export function buildBoard(playerCount = 6) {
+  const { rows, cols } = GRID;
+  const roomDefs = roomDefsFor(playerCount);
 
-      const a = rooms[room];
-      const b = rooms[neighbor];
-      const cells = [];
-      for (let step = 1; step < spacing; step++) {
-        const t = step / spacing;
-        cells.push({
-          row: Math.round(a.row + (b.row - a.row) * t),
-          col: Math.round(a.col + (b.col - a.col) * t),
-        });
-      }
-      // Cells are ordered walking from `room` toward `neighbor`.
-      corridors[key] = { rooms: [room, neighbor], cells };
+  // Everything starts as walkable corridor.
+  const cells = Array.from({ length: rows }, () =>
+    Array.from({ length: cols }, () => ({ type: "corridor" }))
+  );
+
+  // Classic games keep the center as an inaccessible cellar.
+  if (playerCount <= 6) {
+    for (let r = CENTER_CELLAR.r0; r <= CENTER_CELLAR.r1; r++) {
+      for (let c = CENTER_CELLAR.c0; c <= CENTER_CELLAR.c1; c++) cells[r][c] = { type: "blank" };
     }
   }
 
-  return { rooms, corridors, corridorLength: CORRIDOR_LENGTH, secretPassages: SECRET_PASSAGES };
-}
+  const rooms = {};
+  for (const [name, def] of Object.entries(roomDefs)) {
+    const { r0, r1, c0, c1 } = def.rect;
+    for (let r = r0; r <= r1; r++) {
+      for (let c = c0; c <= c1; c++) cells[r][c] = { type: "room", room: name };
+    }
+    rooms[name] = { rect: def.rect, doorCells: [], entryCells: [], secretPassage: SECRET_PASSAGES[name] || null };
+  }
 
-export const BOARD = buildBoard();
+  // Mark doors after all rooms are placed, and validate the entry square is
+  // real corridor — a layout typo (door opening into a wall) fails loudly.
+  for (const [name, def] of Object.entries(roomDefs)) {
+    for (const door of def.doors) {
+      cells[door.cell.r][door.cell.c] = { type: "door", room: name };
+      const e = cells[door.entry.r]?.[door.entry.c];
+      if (!e || e.type !== "corridor") {
+        throw new Error(`Door entry for ${name} at (${door.entry.r},${door.entry.c}) is not corridor`);
+      }
+      rooms[name].doorCells.push(door.cell);
+      rooms[name].entryCells.push(door.entry);
+    }
+  }
 
-// Looks up the ordered corridor cells between two adjacent rooms, walking
-// from `from` toward `to`. Returns null if they aren't directly connected.
-export function getCorridorCells(from, to) {
-  const key = [from, to].sort().join("|");
-  const corridor = BOARD.corridors[key];
-  if (!corridor) return null;
-  const cells = corridor.rooms[0] === from ? corridor.cells : [...corridor.cells].reverse();
-  return cells;
+  return { rows, cols, cells, rooms, startPositions: START_POSITIONS };
 }
 
 export function getCardSets(playerCount) {
@@ -137,6 +177,6 @@ export function getCardSets(playerCount) {
   return {
     suspects: useExpanded ? EXPANDED_SUSPECTS : CLASSIC_SUSPECTS,
     weapons: useExpanded ? EXPANDED_WEAPONS : CLASSIC_WEAPONS,
-    rooms: ROOMS,
+    rooms: useExpanded ? EXPANDED_ROOMS : CLASSIC_ROOMS,
   };
 }

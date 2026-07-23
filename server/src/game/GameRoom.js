@@ -1,13 +1,4 @@
-import {
-  MIN_PLAYERS,
-  MAX_PLAYERS,
-  getCardSets,
-  BOARD,
-  REAL_CORRIDORS,
-  SECRET_PASSAGES,
-  CORRIDOR_LENGTH,
-  getCorridorCells,
-} from "./constants.js";
+import { MIN_PLAYERS, MAX_PLAYERS, getCardSets, buildBoard, SECRET_PASSAGES } from "./constants.js";
 
 function shuffle(arr) {
   const a = [...arr];
@@ -29,6 +20,7 @@ export class GameRoom {
     this.log = [];
     this.winnerId = null;
     this.turnState = { diceValue: null, hasMoved: false };
+    this.board = null;
   }
 
   get playerCount() {
@@ -95,11 +87,14 @@ export class GameRoom {
       shuffledPlayers[i % shuffledPlayers.length].cards.push(card);
     });
 
+    this.board = buildBoard(this.players.length);
+
     const availableCharacters = shuffle(suspects);
-    const availableStartRooms = shuffle(rooms);
     this.players.forEach((player, i) => {
-      player.character = availableCharacters[i % availableCharacters.length];
-      player.position = { room: availableStartRooms[i % availableStartRooms.length], corridor: null, step: null };
+      const character = availableCharacters[i % availableCharacters.length];
+      player.character = character;
+      const start = this.board.startPositions[character];
+      player.position = { room: null, cell: { r: start.r, c: start.c } };
       player.eliminated = false;
     });
 
@@ -146,15 +141,6 @@ export class GameRoom {
     this.turnState = { diceValue: null, hasMoved: false };
   }
 
-  // Finds the {row, col} of the square a player currently occupies, or null
-  // if they're inside a room (rooms aren't individual squares).
-  cellFor(player) {
-    if (player.position.room) return null;
-    const [from, to] = player.position.corridor;
-    const cells = getCorridorCells(from, to);
-    return cells[player.position.step - 1];
-  }
-
   rollDice(playerId) {
     const player = this.assertTurn(playerId);
     if (this.turnState.diceValue != null) throw new Error("You've already rolled this turn");
@@ -164,63 +150,103 @@ export class GameRoom {
     return value;
   }
 
+  // Set of "r,c" corridor squares occupied by players other than `exceptId`.
+  occupiedCorridorCells(exceptId) {
+    const set = new Set();
+    for (const p of this.players) {
+      if (p.id === exceptId) continue;
+      if (p.position.cell) set.add(`${p.position.cell.r},${p.position.cell.c}`);
+    }
+    return set;
+  }
+
+  // BFS over corridor squares from a player's position, up to `dice` steps.
+  // Returns the reachable corridor cells and the rooms whose doorway can be
+  // reached this turn. Corridor squares held by other players block passage.
+  computeReachable(player, dice) {
+    const board = this.board;
+    const occupied = this.occupiedCorridorCells(player.id);
+    const isCorridor = (r, c) =>
+      r >= 0 && r < board.rows && c >= 0 && c < board.cols && board.cells[r][c].type === "corridor";
+
+    const dist = new Map();
+    const queue = [];
+    if (player.position.room) {
+      // Step out through any unblocked doorway (costs 1).
+      for (const entry of board.rooms[player.position.room].entryCells) {
+        const key = `${entry.r},${entry.c}`;
+        if (occupied.has(key) || dist.has(key)) continue;
+        dist.set(key, 1);
+        queue.push({ r: entry.r, c: entry.c, d: 1 });
+      }
+    } else {
+      const { r, c } = player.position.cell;
+      dist.set(`${r},${c}`, 0);
+      queue.push({ r, c, d: 0 });
+    }
+
+    while (queue.length) {
+      const { r, c, d } = queue.shift();
+      if (d >= dice) continue;
+      for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+        const nr = r + dr;
+        const nc = c + dc;
+        const key = `${nr},${nc}`;
+        if (!isCorridor(nr, nc) || occupied.has(key) || dist.has(key)) continue;
+        dist.set(key, d + 1);
+        queue.push({ r: nr, c: nc, d: d + 1 });
+      }
+    }
+
+    const cells = [];
+    for (const key of dist.keys()) {
+      const [r, c] = key.split(",").map(Number);
+      cells.push({ r, c });
+    }
+
+    const rooms = [];
+    for (const [name, room] of Object.entries(board.rooms)) {
+      if (name === player.position.room) continue;
+      const reachable = room.entryCells.some((e) => dist.has(`${e.r},${e.c}`));
+      if (reachable) rooms.push(name);
+    }
+
+    return { cells, rooms };
+  }
+
+  moveTo(playerId, target) {
+    const player = this.assertTurn(playerId);
+    if (this.turnState.diceValue == null) throw new Error("Roll the dice first");
+    if (this.turnState.hasMoved) throw new Error("You've already moved this turn");
+
+    const reachable = this.computeReachable(player, this.turnState.diceValue);
+
+    if (target?.room) {
+      if (!reachable.rooms.includes(target.room)) throw new Error(`You can't reach the ${target.room} this turn`);
+      player.position = { room: target.room, cell: null };
+      this.log.push({ type: "move", message: `${player.name} entered the ${target.room}.` });
+    } else if (target?.cell) {
+      const ok = reachable.cells.some((c) => c.r === target.cell.r && c.c === target.cell.c);
+      if (!ok) throw new Error("You can't reach that square this turn");
+      player.position = { room: null, cell: { r: target.cell.r, c: target.cell.c } };
+      this.log.push({ type: "move", message: `${player.name} moved down the hall.` });
+    } else {
+      throw new Error("No destination given");
+    }
+
+    this.turnState.hasMoved = true;
+    return player;
+  }
+
   useSecretPassage(playerId) {
     const player = this.assertTurn(playerId);
     if (this.turnState.hasMoved) throw new Error("You've already moved this turn");
     const room = player.position.room;
     const destination = room && SECRET_PASSAGES[room];
     if (!destination) throw new Error("There's no secret passage here");
-    player.position = { room: destination, corridor: null, step: null };
+    player.position = { room: destination, cell: null };
     this.turnState.hasMoved = true;
     this.log.push({ type: "move", message: `${player.name} slipped through the secret passage into the ${destination}.` });
-    return player;
-  }
-
-  moveViaCorridor(playerId, targetRoom) {
-    const player = this.assertTurn(playerId);
-    if (this.turnState.diceValue == null) throw new Error("Roll the dice first");
-    if (this.turnState.hasMoved) throw new Error("You've already moved this turn");
-
-    let fromRoom, toRoom, startStep;
-    if (player.position.room) {
-      fromRoom = player.position.room;
-      toRoom = targetRoom;
-      if (!REAL_CORRIDORS[fromRoom]?.includes(toRoom)) {
-        throw new Error(`There's no hallway from ${fromRoom} to ${toRoom}`);
-      }
-      startStep = 0;
-    } else {
-      [fromRoom, toRoom] = player.position.corridor;
-      startStep = player.position.step;
-    }
-
-    const cells = getCorridorCells(fromRoom, toRoom);
-    const desiredStep = Math.min(startStep + this.turnState.diceValue, CORRIDOR_LENGTH);
-
-    let finalStep = startStep;
-    for (let step = startStep + 1; step <= desiredStep; step++) {
-      const cell = cells[step - 1];
-      const occupied = this.players.some((p) => {
-        if (p.id === playerId) return false;
-        const pCell = this.cellFor(p);
-        return pCell && pCell.row === cell.row && pCell.col === cell.col;
-      });
-      if (occupied) break;
-      finalStep = step;
-    }
-
-    this.turnState.hasMoved = true;
-
-    if (finalStep >= CORRIDOR_LENGTH) {
-      player.position = { room: toRoom, corridor: null, step: null };
-      this.log.push({ type: "move", message: `${player.name} walked into the ${toRoom}.` });
-    } else if (finalStep === startStep) {
-      this.log.push({ type: "move", message: `${player.name} tried to move but the way was blocked.` });
-    } else {
-      player.position = { room: null, corridor: [fromRoom, toRoom], step: finalStep };
-      this.log.push({ type: "move", message: `${player.name} moved partway toward the ${toRoom}.` });
-    }
-
     return player;
   }
 
@@ -228,9 +254,9 @@ export class GameRoom {
     const player = this.assertTurn(playerId);
     // Classic rule: the suggested room must be where the suggesting player
     // currently is, and the accused suspect's token is moved into that room.
-    player.position = { room, corridor: null, step: null };
+    player.position = { room, cell: null };
     const suspectPlayer = this.players.find((p) => p.character === suspect);
-    if (suspectPlayer) suspectPlayer.position = { room, corridor: null, step: null };
+    if (suspectPlayer) suspectPlayer.position = { room, cell: null };
 
     const order = this.turnOrder;
     const startIdx = order.indexOf(playerId);
@@ -302,6 +328,18 @@ export class GameRoom {
     this.advanceTurn();
   }
 
+  // Turn state sent to a client. The current player also gets the set of
+  // squares/rooms they can legally reach with their roll, so the board can
+  // highlight moves without re-implementing pathfinding.
+  turnStateFor(forPlayerId) {
+    const base = { diceValue: this.turnState.diceValue, hasMoved: this.turnState.hasMoved, reachable: null };
+    if (forPlayerId === this.currentPlayerId && this.turnState.diceValue != null && !this.turnState.hasMoved) {
+      const player = this.currentPlayer();
+      if (player && !player.eliminated) base.reachable = this.computeReachable(player, this.turnState.diceValue);
+    }
+    return base;
+  }
+
   toClientState(forPlayerId) {
     return {
       code: this.code,
@@ -325,9 +363,8 @@ export class GameRoom {
       winnerId: this.winnerId,
       solution: this.status === "finished" ? this.solution : null,
       cardSets: this.status !== "lobby" ? getCardSets(this.players.length) : getCardSets(this.maxPlayers),
-      board: BOARD,
-      realCorridors: REAL_CORRIDORS,
-      turnState: this.status === "playing" ? this.turnState : null,
+      board: this.board || null,
+      turnState: this.status === "playing" ? this.turnStateFor(forPlayerId) : null,
     };
   }
 }

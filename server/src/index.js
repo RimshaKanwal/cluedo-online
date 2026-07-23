@@ -79,11 +79,11 @@ io.on("connection", (socket) => {
     });
   });
 
-  socket.on("moveViaCorridor", ({ code, playerId, targetRoom }) => {
+  socket.on("movePlayer", ({ code, playerId, target }) => {
     wrap(socket, () => {
       const gameRoom = manager.getRoom(code);
       if (!gameRoom) throw new Error("Room not found");
-      gameRoom.moveViaCorridor(playerId, targetRoom);
+      gameRoom.moveTo(playerId, target);
       broadcastState(code);
     });
   });

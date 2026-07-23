@@ -210,17 +210,21 @@ button.secondary {
   grid-column: 1 / -1;
 }
 
-.board-cells {
-  display: grid;
-  gap: 3px;
+.board-wrap {
   margin: 16px 0;
-  overflow-x: auto;
+  overflow: auto;
 }
 
-.room-cell {
+.board-cells {
+  display: grid;
+  gap: 1px;
+  width: max-content;
+}
+
+.room-block {
   border-radius: 8px;
-  border: 2px solid color-mix(in srgb, canvas 60%, canvastext 40%);
-  background: color-mix(in srgb, canvas 88%, canvastext 12%);
+  border: 2px solid color-mix(in srgb, canvas 45%, canvastext 55%);
+  background: color-mix(in srgb, #8a6d3b 22%, canvas 78%);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -228,16 +232,19 @@ button.secondary {
   gap: 4px;
   padding: 4px;
   overflow: hidden;
+  margin: 1px;
 }
 
-.room-cell.room-self {
-  border-color: #f5a623;
-  border-width: 3px;
+.room-block.reachable {
+  cursor: pointer;
+  border-color: #4f6df5;
+  background: color-mix(in srgb, #4f6df5 22%, canvas 78%);
+  box-shadow: 0 0 0 2px #4f6df5 inset;
 }
 
 .room-name {
   font-weight: 700;
-  font-size: 0.7rem;
+  font-size: 0.72rem;
   text-align: center;
   line-height: 1.1;
 }
@@ -249,32 +256,46 @@ button.secondary {
   justify-content: center;
 }
 
-.corridor-cell {
-  border-radius: 4px;
-  background: color-mix(in srgb, canvas 80%, canvastext 20%);
-  border: 1px solid color-mix(in srgb, canvas 65%, canvastext 35%);
+.grid-cell {
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
+.corridor-cell {
+  border-radius: 2px;
+  background: color-mix(in srgb, canvas 86%, canvastext 14%);
+}
+
+.corridor-cell.reachable {
+  cursor: pointer;
+  background: color-mix(in srgb, #4f6df5 45%, canvas 55%);
+  box-shadow: 0 0 0 1px #4f6df5 inset;
+}
+
+.door-cell {
+  background: color-mix(in srgb, #8a6d3b 40%, canvas 60%);
+  border-radius: 1px;
+}
+
 .occupant-token {
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
-  background: #4f6df5;
+  background: #d64550;
   color: white;
-  font-size: 0.65rem;
+  font-size: 0.62rem;
   font-weight: 700;
   display: flex;
   align-items: center;
   justify-content: center;
+  border: 1px solid rgba(0, 0, 0, 0.3);
 }
 
 .occupant-token.small {
-  width: 16px;
-  height: 16px;
-  font-size: 0.55rem;
+  width: 18px;
+  height: 18px;
+  font-size: 0.6rem;
 }
 
 .movement-panel {

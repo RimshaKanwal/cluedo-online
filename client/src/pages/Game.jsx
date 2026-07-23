@@ -2,37 +2,29 @@ import { useEffect, useMemo, useState } from "react";
 import { socket } from "../socket";
 import Notepad from "../components/Notepad";
 
-function getCorridorCells(board, from, to) {
-  const key = [from, to].sort().join("|");
-  const corridor = board.corridors[key];
-  if (!corridor) return null;
-  return corridor.rooms[0] === from ? corridor.cells : [...corridor.cells].reverse();
-}
-
-function cellForPlayer(board, player) {
-  if (player.position.room) return null;
-  const cells = getCorridorCells(board, ...player.position.corridor);
-  return cells ? cells[player.position.step - 1] : null;
-}
-
-function useBoardDims(board) {
-  return useMemo(() => {
-    const roomCoords = Object.values(board.rooms);
-    const maxCoord = Math.max(...roomCoords.flatMap((r) => [r.row, r.col]));
-    const roomIndices = new Set(roomCoords.flatMap((r) => [r.row, r.col]));
-    const track = (i) => (roomIndices.has(i) ? "88px" : "30px");
-    const size = maxCoord + 1;
-    const template = Array.from({ length: size }, (_, i) => track(i)).join(" ");
-    return { columns: template, rows: template };
-  }, [board]);
-}
+const SECRET_PASSAGES = {
+  Kitchen: "Study",
+  Study: "Kitchen",
+  Lounge: "Conservatory",
+  Conservatory: "Lounge",
+};
 
 export default function Game({ code, playerId, state }) {
   const self = state.players.find((p) => p.id === playerId);
   const isMyTurn = state.currentPlayerId === playerId;
   const currentPlayer = state.players.find((p) => p.id === state.currentPlayerId);
-  const turnState = state.turnState || { diceValue: null, hasMoved: false };
-  const dims = useBoardDims(state.board);
+  const turnState = state.turnState || { diceValue: null, hasMoved: false, reachable: null };
+  const board = state.board;
+
+  const reachableCellSet = useMemo(() => {
+    const s = new Set();
+    for (const c of turnState.reachable?.cells || []) s.add(`${c.r},${c.c}`);
+    return s;
+  }, [turnState.reachable]);
+  const reachableRoomSet = useMemo(
+    () => new Set(turnState.reachable?.rooms || []),
+    [turnState.reachable]
+  );
 
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [accuseOpen, setAccuseOpen] = useState(false);
@@ -55,19 +47,21 @@ export default function Game({ code, playerId, state }) {
     };
   }, []);
 
-  const exits = self?.position.room ? state.realCorridors[self.position.room] || [] : [];
-  const passageTo = self?.position.room ? state.board.secretPassages[self.position.room] : null;
+  const passageTo = self?.position.room ? SECRET_PASSAGES[self.position.room] : null;
+  const canMove = isMyTurn && !self?.eliminated && turnState.diceValue != null && !turnState.hasMoved;
 
   function rollDice() {
     socket.emit("rollDice", { code, playerId });
   }
 
-  function moveTo(targetRoom) {
-    socket.emit("moveViaCorridor", { code, playerId, targetRoom });
+  function moveToCell(r, c) {
+    if (!canMove || !reachableCellSet.has(`${r},${c}`)) return;
+    socket.emit("movePlayer", { code, playerId, target: { cell: { r, c } } });
   }
 
-  function continueMove() {
-    socket.emit("moveViaCorridor", { code, playerId, targetRoom: null });
+  function moveToRoom(room) {
+    if (!canMove || !reachableRoomSet.has(room)) return;
+    socket.emit("movePlayer", { code, playerId, target: { room } });
   }
 
   function usePassage() {
@@ -123,50 +117,16 @@ export default function Game({ code, playerId, state }) {
       <div className="card board-card">
         <h3>Turn: {currentPlayer?.name} {isMyTurn && "(You)"}</h3>
 
-        <div className="board-cells" style={{ gridTemplateColumns: dims.columns, gridTemplateRows: dims.rows }}>
-          {Object.entries(state.board.rooms).map(([room, { row, col }]) => {
-            const occupants = state.players.filter((p) => p.position.room === room);
-            const isSelf = self?.position.room === room;
-            return (
-              <div
-                key={room}
-                className={`room-cell ${isSelf ? "room-self" : ""}`}
-                style={{ gridRow: row + 1, gridColumn: col + 1 }}
-              >
-                <div className="room-name">{room}</div>
-                <div className="occupant-row">
-                  {occupants.map((o) => (
-                    <div key={o.id} className="occupant-token" title={o.name}>
-                      {o.character?.[0] ?? o.name[0]}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-
-          {Object.values(state.board.corridors).flatMap((corridor) =>
-            corridor.cells.map((cell, idx) => {
-              const occupants = state.players.filter((p) => {
-                const pCell = cellForPlayer(state.board, p);
-                return pCell && pCell.row === cell.row && pCell.col === cell.col;
-              });
-              return (
-                <div
-                  key={`${corridor.rooms.join("-")}-${idx}`}
-                  className="corridor-cell"
-                  style={{ gridRow: cell.row + 1, gridColumn: cell.col + 1 }}
-                >
-                  {occupants.map((o) => (
-                    <div key={o.id} className="occupant-token small" title={o.name}>
-                      {o.character?.[0] ?? o.name[0]}
-                    </div>
-                  ))}
-                </div>
-              );
-            })
-          )}
-        </div>
+        <Board
+          board={board}
+          players={state.players}
+          selfId={playerId}
+          canMove={canMove}
+          reachableCellSet={reachableCellSet}
+          reachableRoomSet={reachableRoomSet}
+          onMoveCell={moveToCell}
+          onMoveRoom={moveToRoom}
+        />
 
         {isMyTurn && !self.eliminated && (
           <div className="movement-panel">
@@ -174,20 +134,14 @@ export default function Game({ code, playerId, state }) {
               <button className="primary" onClick={rollDice}>🎲 Roll Dice</button>
             )}
             {turnState.diceValue != null && <span className="dice-value">Rolled: {turnState.diceValue}</span>}
-
-            {!turnState.hasMoved && self.position.room && (
-              <>
-                {turnState.diceValue != null &&
-                  exits.map((room) => (
-                    <button key={room} onClick={() => moveTo(room)}>Move to {room}</button>
-                  ))}
-                {passageTo && (
-                  <button className="secondary" onClick={usePassage}>🕳️ Secret passage to {passageTo}</button>
-                )}
-              </>
+            {canMove && (
+              <span className="hint">
+                Click a highlighted square or room to move
+                {reachableRoomSet.size + reachableCellSet.size === 0 ? " (nowhere to go — end turn)" : ""}
+              </span>
             )}
-            {!turnState.hasMoved && !self.position.room && turnState.diceValue != null && (
-              <button onClick={continueMove}>Continue down the hallway</button>
+            {!turnState.hasMoved && passageTo && (
+              <button className="secondary" onClick={usePassage}>🕳️ Secret passage to {passageTo}</button>
             )}
           </div>
         )}
@@ -295,6 +249,80 @@ export default function Game({ code, playerId, state }) {
           </form>
         </Modal>
       )}
+    </div>
+  );
+}
+
+function Board({ board, players, canMove, reachableCellSet, reachableRoomSet, onMoveCell, onMoveRoom }) {
+  // Group player tokens by where they are for O(1) lookup while rendering.
+  const cellTokens = new Map(); // "r,c" -> [players]
+  const roomTokens = new Map(); // roomName -> [players]
+  for (const p of players) {
+    if (p.position.room) {
+      if (!roomTokens.has(p.position.room)) roomTokens.set(p.position.room, []);
+      roomTokens.get(p.position.room).push(p);
+    } else if (p.position.cell) {
+      const key = `${p.position.cell.r},${p.position.cell.c}`;
+      if (!cellTokens.has(key)) cellTokens.set(key, []);
+      cellTokens.get(key).push(p);
+    }
+  }
+
+  const CELL = 22;
+  const gridStyle = {
+    gridTemplateColumns: `repeat(${board.cols}, ${CELL}px)`,
+    gridTemplateRows: `repeat(${board.rows}, ${CELL}px)`,
+  };
+
+  function token(p, small) {
+    return (
+      <div key={p.id} className={`occupant-token ${small ? "small" : ""}`} title={`${p.name} (${p.character})`}>
+        {p.character?.[0] ?? p.name[0]}
+      </div>
+    );
+  }
+
+  return (
+    <div className="board-wrap">
+      <div className="board-cells" style={gridStyle}>
+        {/* Room blocks span their rectangle */}
+        {Object.entries(board.rooms).map(([name, room]) => {
+          const { r0, r1, c0, c1 } = room.rect;
+          const reachable = canMove && reachableRoomSet.has(name);
+          return (
+            <div
+              key={name}
+              className={`room-block ${reachable ? "reachable" : ""}`}
+              style={{ gridRow: `${r0 + 1} / ${r1 + 2}`, gridColumn: `${c0 + 1} / ${c1 + 2}` }}
+              onClick={() => reachable && onMoveRoom(name)}
+            >
+              <div className="room-name">{name}</div>
+              <div className="occupant-row">{(roomTokens.get(name) || []).map((p) => token(p, false))}</div>
+            </div>
+          );
+        })}
+
+        {/* Individual corridor and door cells */}
+        {board.cells.flatMap((row, r) =>
+          row.map((cell, c) => {
+            if (cell.type === "room" || cell.type === "blank") return null;
+            const key = `${r},${c}`;
+            const isDoor = cell.type === "door";
+            const reachable = canMove && !isDoor && reachableCellSet.has(key);
+            const occupants = cellTokens.get(key) || [];
+            return (
+              <div
+                key={key}
+                className={`grid-cell ${isDoor ? "door-cell" : "corridor-cell"} ${reachable ? "reachable" : ""}`}
+                style={{ gridRow: r + 1, gridColumn: c + 1 }}
+                onClick={() => reachable && onMoveCell(r, c)}
+              >
+                {occupants.map((p) => token(p, true))}
+              </div>
+            );
+          })
+        )}
+      </div>
     </div>
   );
 }
