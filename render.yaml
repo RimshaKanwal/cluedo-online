@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: cluedo-server
+    runtime: node
+    rootDir: server
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: CLIENT_ORIGIN
+        sync: false
