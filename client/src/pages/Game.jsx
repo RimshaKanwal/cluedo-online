@@ -2,10 +2,37 @@ import { useEffect, useMemo, useState } from "react";
 import { socket } from "../socket";
 import Notepad from "../components/Notepad";
 
+function getCorridorCells(board, from, to) {
+  const key = [from, to].sort().join("|");
+  const corridor = board.corridors[key];
+  if (!corridor) return null;
+  return corridor.rooms[0] === from ? corridor.cells : [...corridor.cells].reverse();
+}
+
+function cellForPlayer(board, player) {
+  if (player.position.room) return null;
+  const cells = getCorridorCells(board, ...player.position.corridor);
+  return cells ? cells[player.position.step - 1] : null;
+}
+
+function useBoardDims(board) {
+  return useMemo(() => {
+    const roomCoords = Object.values(board.rooms);
+    const maxCoord = Math.max(...roomCoords.flatMap((r) => [r.row, r.col]));
+    const roomIndices = new Set(roomCoords.flatMap((r) => [r.row, r.col]));
+    const track = (i) => (roomIndices.has(i) ? "88px" : "30px");
+    const size = maxCoord + 1;
+    const template = Array.from({ length: size }, (_, i) => track(i)).join(" ");
+    return { columns: template, rows: template };
+  }, [board]);
+}
+
 export default function Game({ code, playerId, state }) {
   const self = state.players.find((p) => p.id === playerId);
   const isMyTurn = state.currentPlayerId === playerId;
   const currentPlayer = state.players.find((p) => p.id === state.currentPlayerId);
+  const turnState = state.turnState || { diceValue: null, hasMoved: false };
+  const dims = useBoardDims(state.board);
 
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [accuseOpen, setAccuseOpen] = useState(false);
@@ -28,22 +55,32 @@ export default function Game({ code, playerId, state }) {
     };
   }, []);
 
-  const validMoves = useMemo(() => {
-    if (!self?.position) return [];
-    return state.roomAdjacency[self.position] || [];
-  }, [self, state.roomAdjacency]);
+  const exits = self?.position.room ? state.realCorridors[self.position.room] || [] : [];
+  const passageTo = self?.position.room ? state.board.secretPassages[self.position.room] : null;
 
-  function move(room) {
-    socket.emit("movePlayer", { code, playerId, room });
+  function rollDice() {
+    socket.emit("rollDice", { code, playerId });
+  }
+
+  function moveTo(targetRoom) {
+    socket.emit("moveViaCorridor", { code, playerId, targetRoom });
+  }
+
+  function continueMove() {
+    socket.emit("moveViaCorridor", { code, playerId, targetRoom: null });
+  }
+
+  function usePassage() {
+    socket.emit("useSecretPassage", { code, playerId });
   }
 
   function submitSuggestion(e) {
     e.preventDefault();
-    if (!suggestion.suspect || !suggestion.weapon) return;
+    if (!suggestion.suspect || !suggestion.weapon || !self.position.room) return;
     socket.emit("makeSuggestion", {
       code,
       playerId,
-      suggestion: { suspect: suggestion.suspect, weapon: suggestion.weapon, room: self.position },
+      suggestion: { suspect: suggestion.suspect, weapon: suggestion.weapon, room: self.position.room },
     });
     setSuggestOpen(false);
   }
@@ -85,32 +122,81 @@ export default function Game({ code, playerId, state }) {
     <div className="game-layout">
       <div className="card board-card">
         <h3>Turn: {currentPlayer?.name} {isMyTurn && "(You)"}</h3>
-        <div className="board-grid">
-          {state.cardSets.rooms.map((room) => {
-            const occupants = state.players.filter((p) => p.position === room);
-            const isSelf = self?.position === room;
-            const isMovable = isMyTurn && validMoves.includes(room);
+
+        <div className="board-cells" style={{ gridTemplateColumns: dims.columns, gridTemplateRows: dims.rows }}>
+          {Object.entries(state.board.rooms).map(([room, { row, col }]) => {
+            const occupants = state.players.filter((p) => p.position.room === room);
+            const isSelf = self?.position.room === room;
             return (
-              <button
+              <div
                 key={room}
-                className={`room-tile ${isSelf ? "room-self" : ""} ${isMovable ? "room-movable" : ""}`}
-                disabled={!isMovable}
-                onClick={() => move(room)}
+                className={`room-cell ${isSelf ? "room-self" : ""}`}
+                style={{ gridRow: row + 1, gridColumn: col + 1 }}
               >
                 <div className="room-name">{room}</div>
-                {occupants.map((o) => (
-                  <div key={o.id} className="occupant-token" title={o.name}>
-                    {o.character?.[0] ?? o.name[0]}
-                  </div>
-                ))}
-              </button>
+                <div className="occupant-row">
+                  {occupants.map((o) => (
+                    <div key={o.id} className="occupant-token" title={o.name}>
+                      {o.character?.[0] ?? o.name[0]}
+                    </div>
+                  ))}
+                </div>
+              </div>
             );
           })}
+
+          {Object.values(state.board.corridors).flatMap((corridor) =>
+            corridor.cells.map((cell, idx) => {
+              const occupants = state.players.filter((p) => {
+                const pCell = cellForPlayer(state.board, p);
+                return pCell && pCell.row === cell.row && pCell.col === cell.col;
+              });
+              return (
+                <div
+                  key={`${corridor.rooms.join("-")}-${idx}`}
+                  className="corridor-cell"
+                  style={{ gridRow: cell.row + 1, gridColumn: cell.col + 1 }}
+                >
+                  {occupants.map((o) => (
+                    <div key={o.id} className="occupant-token small" title={o.name}>
+                      {o.character?.[0] ?? o.name[0]}
+                    </div>
+                  ))}
+                </div>
+              );
+            })
+          )}
         </div>
 
         {isMyTurn && !self.eliminated && (
+          <div className="movement-panel">
+            {turnState.diceValue == null && !turnState.hasMoved && (
+              <button className="primary" onClick={rollDice}>🎲 Roll Dice</button>
+            )}
+            {turnState.diceValue != null && <span className="dice-value">Rolled: {turnState.diceValue}</span>}
+
+            {!turnState.hasMoved && self.position.room && (
+              <>
+                {turnState.diceValue != null &&
+                  exits.map((room) => (
+                    <button key={room} onClick={() => moveTo(room)}>Move to {room}</button>
+                  ))}
+                {passageTo && (
+                  <button className="secondary" onClick={usePassage}>🕳️ Secret passage to {passageTo}</button>
+                )}
+              </>
+            )}
+            {!turnState.hasMoved && !self.position.room && turnState.diceValue != null && (
+              <button onClick={continueMove}>Continue down the hallway</button>
+            )}
+          </div>
+        )}
+
+        {isMyTurn && !self.eliminated && (
           <div className="action-row">
-            <button onClick={() => setSuggestOpen(true)}>Make Suggestion</button>
+            <button onClick={() => setSuggestOpen(true)} disabled={!self.position.room} title={!self.position.room ? "You must be in a room to suggest" : ""}>
+              Make Suggestion
+            </button>
             <button onClick={() => setAccuseOpen(true)}>Make Accusation</button>
             <button onClick={endTurn} className="secondary">End Turn</button>
           </div>
@@ -158,7 +244,7 @@ export default function Game({ code, playerId, state }) {
       </div>
 
       {suggestOpen && (
-        <Modal onClose={() => setSuggestOpen(false)} title={`Suggest (in the ${self.position})`}>
+        <Modal onClose={() => setSuggestOpen(false)} title={`Suggest (in the ${self.position.room})`}>
           <form onSubmit={submitSuggestion} className="form">
             <label>
               Suspect
@@ -174,7 +260,7 @@ export default function Game({ code, playerId, state }) {
                 {state.cardSets.weapons.map((w) => <option key={w} value={w}>{w}</option>)}
               </select>
             </label>
-            <p className="hint">Room is fixed to your current location: {self.position}</p>
+            <p className="hint">Room is fixed to your current location: {self.position.room}</p>
             <button type="submit" className="primary">Submit Suggestion</button>
           </form>
         </Modal>

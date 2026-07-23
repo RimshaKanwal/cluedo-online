@@ -4,11 +4,17 @@ import { socket } from "../socket";
 const MIN_PLAYERS = 3;
 const MAX_PLAYERS = 8;
 
+function codeFromJoinLink() {
+  const match = window.location.pathname.match(/\/join\/([A-Za-z0-9]+)/);
+  return match ? match[1].toUpperCase() : "";
+}
+
 export default function Home() {
-  const [mode, setMode] = useState("create"); // create | join
+  const initialJoinCode = codeFromJoinLink();
+  const [mode, setMode] = useState(initialJoinCode ? "join" : "create"); // create | join
   const [name, setName] = useState("");
   const [maxPlayers, setMaxPlayers] = useState(6);
-  const [joinCode, setJoinCode] = useState("");
+  const [joinCode, setJoinCode] = useState(initialJoinCode);
 
   function handleCreate(e) {
     e.preventDefault();

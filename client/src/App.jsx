@@ -16,6 +16,7 @@ export default function App() {
       setCode(code);
       setPlayerId(playerId);
       setError(null);
+      window.history.replaceState(null, "", `/join/${code}`);
     }
     function onState(newState) {
       setState(newState);

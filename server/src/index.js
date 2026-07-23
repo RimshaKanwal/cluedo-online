@@ -70,11 +70,29 @@ io.on("connection", (socket) => {
     });
   });
 
-  socket.on("movePlayer", ({ code, playerId, room: destRoom }) => {
+  socket.on("rollDice", ({ code, playerId }) => {
     wrap(socket, () => {
       const gameRoom = manager.getRoom(code);
       if (!gameRoom) throw new Error("Room not found");
-      gameRoom.movePlayer(playerId, destRoom);
+      gameRoom.rollDice(playerId);
+      broadcastState(code);
+    });
+  });
+
+  socket.on("moveViaCorridor", ({ code, playerId, targetRoom }) => {
+    wrap(socket, () => {
+      const gameRoom = manager.getRoom(code);
+      if (!gameRoom) throw new Error("Room not found");
+      gameRoom.moveViaCorridor(playerId, targetRoom);
+      broadcastState(code);
+    });
+  });
+
+  socket.on("useSecretPassage", ({ code, playerId }) => {
+    wrap(socket, () => {
+      const gameRoom = manager.getRoom(code);
+      if (!gameRoom) throw new Error("Room not found");
+      gameRoom.useSecretPassage(playerId);
       broadcastState(code);
     });
   });

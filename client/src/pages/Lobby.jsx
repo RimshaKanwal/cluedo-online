@@ -8,17 +8,20 @@ export default function Lobby({ code, playerId, state }) {
     socket.emit("startGame", { code, playerId });
   }
 
-  function copyCode() {
-    navigator.clipboard?.writeText(code);
+  const joinLink = `${window.location.origin}/join/${code}`;
+
+  function copyLink() {
+    navigator.clipboard?.writeText(joinLink);
   }
 
   return (
     <div className="card lobby-card">
       <h2>Waiting for players</h2>
       <div className="room-code-share">
-        <span>Share this code:</span>
-        <button className="code-chip" onClick={copyCode} title="Click to copy">{code}</button>
+        <span>Share this link:</span>
+        <button className="code-chip link-chip" onClick={copyLink} title="Click to copy">{joinLink}</button>
       </div>
+      <p className="hint">Or share the code: <strong>{code}</strong></p>
 
       <p className="hint">
         {state.players.length} / {state.maxPlayers} joined (needs at least {state.minPlayers} to start)

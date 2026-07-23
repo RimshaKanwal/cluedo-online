@@ -1,4 +1,13 @@
-import { MIN_PLAYERS, MAX_PLAYERS, getCardSets, ROOM_ADJACENCY } from "./constants.js";
+import {
+  MIN_PLAYERS,
+  MAX_PLAYERS,
+  getCardSets,
+  BOARD,
+  REAL_CORRIDORS,
+  SECRET_PASSAGES,
+  CORRIDOR_LENGTH,
+  getCorridorCells,
+} from "./constants.js";
 
 function shuffle(arr) {
   const a = [...arr];
@@ -19,6 +28,7 @@ export class GameRoom {
     this.turnIndex = 0;
     this.log = [];
     this.winnerId = null;
+    this.turnState = { diceValue: null, hasMoved: false };
   }
 
   get playerCount() {
@@ -89,7 +99,7 @@ export class GameRoom {
     const availableStartRooms = shuffle(rooms);
     this.players.forEach((player, i) => {
       player.character = availableCharacters[i % availableCharacters.length];
-      player.position = availableStartRooms[i % availableStartRooms.length];
+      player.position = { room: availableStartRooms[i % availableStartRooms.length], corridor: null, step: null };
       player.eliminated = false;
     });
 
@@ -98,6 +108,7 @@ export class GameRoom {
     this.status = "playing";
     this.log = [{ type: "system", message: "The game has begun. Good luck, detectives." }];
     this.winnerId = null;
+    this.turnState = { diceValue: null, hasMoved: false };
   }
 
   get currentPlayerId() {
@@ -132,16 +143,84 @@ export class GameRoom {
       const p = this.players.find((pl) => pl.id === this.currentPlayerId);
       if (p && !p.eliminated) break;
     }
+    this.turnState = { diceValue: null, hasMoved: false };
   }
 
-  movePlayer(playerId, room) {
+  // Finds the {row, col} of the square a player currently occupies, or null
+  // if they're inside a room (rooms aren't individual squares).
+  cellFor(player) {
+    if (player.position.room) return null;
+    const [from, to] = player.position.corridor;
+    const cells = getCorridorCells(from, to);
+    return cells[player.position.step - 1];
+  }
+
+  rollDice(playerId) {
     const player = this.assertTurn(playerId);
-    const validMoves = ROOM_ADJACENCY[player.position] || [];
-    if (!validMoves.includes(room)) {
-      throw new Error(`Cannot move from ${player.position} to ${room}`);
+    if (this.turnState.diceValue != null) throw new Error("You've already rolled this turn");
+    const value = 1 + Math.floor(Math.random() * 6);
+    this.turnState.diceValue = value;
+    this.log.push({ type: "system", message: `${player.name} rolled a ${value}.` });
+    return value;
+  }
+
+  useSecretPassage(playerId) {
+    const player = this.assertTurn(playerId);
+    if (this.turnState.hasMoved) throw new Error("You've already moved this turn");
+    const room = player.position.room;
+    const destination = room && SECRET_PASSAGES[room];
+    if (!destination) throw new Error("There's no secret passage here");
+    player.position = { room: destination, corridor: null, step: null };
+    this.turnState.hasMoved = true;
+    this.log.push({ type: "move", message: `${player.name} slipped through the secret passage into the ${destination}.` });
+    return player;
+  }
+
+  moveViaCorridor(playerId, targetRoom) {
+    const player = this.assertTurn(playerId);
+    if (this.turnState.diceValue == null) throw new Error("Roll the dice first");
+    if (this.turnState.hasMoved) throw new Error("You've already moved this turn");
+
+    let fromRoom, toRoom, startStep;
+    if (player.position.room) {
+      fromRoom = player.position.room;
+      toRoom = targetRoom;
+      if (!REAL_CORRIDORS[fromRoom]?.includes(toRoom)) {
+        throw new Error(`There's no hallway from ${fromRoom} to ${toRoom}`);
+      }
+      startStep = 0;
+    } else {
+      [fromRoom, toRoom] = player.position.corridor;
+      startStep = player.position.step;
     }
-    player.position = room;
-    this.log.push({ type: "move", message: `${player.name} moved to the ${room}.` });
+
+    const cells = getCorridorCells(fromRoom, toRoom);
+    const desiredStep = Math.min(startStep + this.turnState.diceValue, CORRIDOR_LENGTH);
+
+    let finalStep = startStep;
+    for (let step = startStep + 1; step <= desiredStep; step++) {
+      const cell = cells[step - 1];
+      const occupied = this.players.some((p) => {
+        if (p.id === playerId) return false;
+        const pCell = this.cellFor(p);
+        return pCell && pCell.row === cell.row && pCell.col === cell.col;
+      });
+      if (occupied) break;
+      finalStep = step;
+    }
+
+    this.turnState.hasMoved = true;
+
+    if (finalStep >= CORRIDOR_LENGTH) {
+      player.position = { room: toRoom, corridor: null, step: null };
+      this.log.push({ type: "move", message: `${player.name} walked into the ${toRoom}.` });
+    } else if (finalStep === startStep) {
+      this.log.push({ type: "move", message: `${player.name} tried to move but the way was blocked.` });
+    } else {
+      player.position = { room: null, corridor: [fromRoom, toRoom], step: finalStep };
+      this.log.push({ type: "move", message: `${player.name} moved partway toward the ${toRoom}.` });
+    }
+
     return player;
   }
 
@@ -149,9 +228,9 @@ export class GameRoom {
     const player = this.assertTurn(playerId);
     // Classic rule: the suggested room must be where the suggesting player
     // currently is, and the accused suspect's token is moved into that room.
-    player.position = room;
+    player.position = { room, corridor: null, step: null };
     const suspectPlayer = this.players.find((p) => p.character === suspect);
-    if (suspectPlayer) suspectPlayer.position = room;
+    if (suspectPlayer) suspectPlayer.position = { room, corridor: null, step: null };
 
     const order = this.turnOrder;
     const startIdx = order.indexOf(playerId);
@@ -246,7 +325,9 @@ export class GameRoom {
       winnerId: this.winnerId,
       solution: this.status === "finished" ? this.solution : null,
       cardSets: this.status !== "lobby" ? getCardSets(this.players.length) : getCardSets(this.maxPlayers),
-      roomAdjacency: ROOM_ADJACENCY,
+      board: BOARD,
+      realCorridors: REAL_CORRIDORS,
+      turnState: this.status === "playing" ? this.turnState : null,
     };
   }
 }
