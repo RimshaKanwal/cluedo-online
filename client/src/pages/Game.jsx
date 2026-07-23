@@ -48,7 +48,9 @@ export default function Game({ code, playerId, state }) {
   }, []);
 
   const passageTo = self?.position.room ? SECRET_PASSAGES[self.position.room] : null;
-  const canMove = isMyTurn && !self?.eliminated && turnState.diceValue != null && !turnState.hasMoved;
+  const pending = state.pendingSuggestion;
+  const canMove = isMyTurn && !self?.eliminated && !pending && turnState.diceValue != null && !turnState.hasMoved;
+  const mustRespond = pending && pending.currentResponderId === playerId;
 
   function rollDice() {
     socket.emit("rollDice", { code, playerId });
@@ -66,6 +68,10 @@ export default function Game({ code, playerId, state }) {
 
   function usePassage() {
     socket.emit("useSecretPassage", { code, playerId });
+  }
+
+  function respondSuggestion(action, cardValue) {
+    socket.emit("respondSuggestion", { code, playerId, action, cardValue });
   }
 
   function submitSuggestion(e) {
@@ -146,17 +152,31 @@ export default function Game({ code, playerId, state }) {
           </div>
         )}
 
-        {isMyTurn && !self.eliminated && (
+        {isMyTurn && !self.eliminated && !pending && (
           <div className="action-row">
             <button onClick={() => setSuggestOpen(true)} disabled={!self.position.room} title={!self.position.room ? "You must be in a room to suggest" : ""}>
               Make Suggestion
             </button>
-            <button onClick={() => setAccuseOpen(true)}>Make Accusation</button>
+            <button onClick={() => setAccuseOpen(true)} disabled={!self.position.room} title={!self.position.room ? "You must be in a room to accuse" : ""}>
+              Make Accusation
+            </button>
             <button onClick={endTurn} className="secondary">End Turn</button>
           </div>
         )}
         {isMyTurn && self.eliminated && (
           <p className="hint">You've been eliminated but the turn landed on you due to a stale state — ending turn.</p>
+        )}
+
+        {pending && (
+          <div className="result-banner">
+            <strong>{pending.byName}</strong> suggested <strong>{pending.suggestion.suspect}</strong> with the{" "}
+            <strong>{pending.suggestion.weapon}</strong> in the <strong>{pending.suggestion.room}</strong>.
+            {pending.currentResponderId === playerId ? (
+              " It's your turn to answer."
+            ) : (
+              <> Waiting for <strong>{pending.currentResponderName}</strong> to answer…</>
+            )}
+          </div>
         )}
 
         {lastResult && !lastResult.accusationResult && (
@@ -194,8 +214,36 @@ export default function Game({ code, playerId, state }) {
       </div>
 
       <div className="card notepad-card">
-        <Notepad cardSets={state.cardSets} />
+        <Notepad cardSets={state.cardSets} players={state.players} selfId={playerId} />
       </div>
+
+      {mustRespond && (
+        <Modal title="Can you disprove this suggestion?" onClose={() => {}}>
+          <p>
+            <strong>{pending.byName}</strong> suggested <strong>{pending.suggestion.suspect}</strong> with the{" "}
+            <strong>{pending.suggestion.weapon}</strong> in the <strong>{pending.suggestion.room}</strong>.
+          </p>
+          {pending.yourMatches?.length > 0 ? (
+            <>
+              <p className="hint">You hold one or more of these — you must show one (privately) to {pending.byName}:</p>
+              <div className="action-row">
+                {pending.yourMatches.map((card) => (
+                  <button key={card} className="primary" onClick={() => respondSuggestion("show", card)}>
+                    Show {card}
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="hint">You don't hold any of these cards.</p>
+              <button className="primary" onClick={() => respondSuggestion("pass")}>
+                I don't have any of these
+              </button>
+            </>
+          )}
+        </Modal>
+      )}
 
       {suggestOpen && (
         <Modal onClose={() => setSuggestOpen(false)} title={`Suggest (in the ${self.position.room})`}>

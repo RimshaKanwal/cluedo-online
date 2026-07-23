@@ -25,6 +25,18 @@ function broadcastState(code) {
   }
 }
 
+// When a suggestion is disproved (or no one can), privately tell the
+// suggester which card — if any — was shown to them.
+function deliverReveal(room, privateReveal) {
+  if (!privateReveal) return;
+  const suggester = room.players.find((p) => p.id === privateReveal.suggesterId);
+  if (!suggester) return;
+  io.to(suggester.socketId).emit("suggestionResult", {
+    disprovingPlayerName: privateReveal.byName || null,
+    shownCard: privateReveal.shownCard || null,
+  });
+}
+
 function wrap(socket, fn) {
   try {
     fn();
@@ -102,8 +114,18 @@ io.on("connection", (socket) => {
       const gameRoom = manager.getRoom(code);
       if (!gameRoom) throw new Error("Room not found");
       const result = gameRoom.makeSuggestion(playerId, suggestion);
+      deliverReveal(gameRoom, result?.privateReveal);
       broadcastState(code);
-      socket.emit("suggestionResult", result);
+    });
+  });
+
+  socket.on("respondSuggestion", ({ code, playerId, action, cardValue }) => {
+    wrap(socket, () => {
+      const gameRoom = manager.getRoom(code);
+      if (!gameRoom) throw new Error("Room not found");
+      const result = gameRoom.respondToSuggestion(playerId, { action, cardValue });
+      deliverReveal(gameRoom, result?.privateReveal);
+      broadcastState(code);
     });
   });
 

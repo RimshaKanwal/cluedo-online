@@ -21,6 +21,7 @@ export class GameRoom {
     this.winnerId = null;
     this.turnState = { diceValue: null, hasMoved: false };
     this.board = null;
+    this.pendingSuggestion = null;
   }
 
   get playerCount() {
@@ -104,6 +105,7 @@ export class GameRoom {
     this.log = [{ type: "system", message: "The game has begun. Good luck, detectives." }];
     this.winnerId = null;
     this.turnState = { diceValue: null, hasMoved: false };
+    this.pendingSuggestion = null;
   }
 
   get currentPlayerId() {
@@ -139,6 +141,7 @@ export class GameRoom {
       if (p && !p.eliminated) break;
     }
     this.turnState = { diceValue: null, hasMoved: false };
+    this.pendingSuggestion = null;
   }
 
   rollDice(playerId) {
@@ -250,55 +253,90 @@ export class GameRoom {
     return player;
   }
 
+  // Cards a player holds that would disprove the given suggestion.
+  cardsMatchingSuggestion(player, { suspect, weapon, room }) {
+    return player.cards.filter(
+      (c) =>
+        (c.type === "suspect" && c.value === suspect) ||
+        (c.type === "weapon" && c.value === weapon) ||
+        (c.type === "room" && c.value === room)
+    );
+  }
+
   makeSuggestion(playerId, { suspect, weapon, room }) {
     const player = this.assertTurn(playerId);
+    if (this.pendingSuggestion) throw new Error("A suggestion is already being answered");
     // Classic rule: the suggested room must be where the suggesting player
     // currently is, and the accused suspect's token is moved into that room.
     player.position = { room, cell: null };
     const suspectPlayer = this.players.find((p) => p.character === suspect);
     if (suspectPlayer) suspectPlayer.position = { room, cell: null };
 
+    // Everyone else answers in turn order, starting to the suggester's left.
     const order = this.turnOrder;
     const startIdx = order.indexOf(playerId);
-    let disprovingPlayer = null;
-    let shownCard = null;
-
+    const responderOrder = [];
     for (let step = 1; step < order.length; step++) {
-      const candidateId = order[(startIdx + step) % order.length];
-      const candidate = this.players.find((p) => p.id === candidateId);
-      if (!candidate || candidate.id === playerId) continue;
-      const match = candidate.cards.find(
-        (c) =>
-          (c.type === "suspect" && c.value === suspect) ||
-          (c.type === "weapon" && c.value === weapon) ||
-          (c.type === "room" && c.value === room)
-      );
-      if (match) {
-        disprovingPlayer = candidate;
-        shownCard = match;
-        break;
-      }
+      responderOrder.push(order[(startIdx + step) % order.length]);
     }
 
+    this.pendingSuggestion = { by: playerId, suggestion: { suspect, weapon, room }, responderOrder, index: 0 };
     this.log.push({
       type: "suggestion",
-      message: `${player.name} suggested it was ${suspect}, with the ${weapon}, in the ${room}.`,
-      by: playerId,
-      suggestion: { suspect, weapon, room },
-      disprovedBy: disprovingPlayer ? disprovingPlayer.name : null,
-      disprovedById: disprovingPlayer ? disprovingPlayer.id : null,
+      message: `${player.name} suggested it was ${suspect}, with the ${weapon}, in the ${room}. Going round the table...`,
     });
 
-    return {
-      suggestion: { suspect, weapon, room },
-      disprovingPlayerId: disprovingPlayer ? disprovingPlayer.id : null,
-      disprovingPlayerName: disprovingPlayer ? disprovingPlayer.name : null,
-      shownCard: shownCard || null, // only ever sent privately to the suggester
-    };
+    // Skip past anyone who's disconnected (they can't show a card).
+    return this.autoAdvanceSuggestion();
+  }
+
+  // Auto-skips disconnected responders; if the round runs out, closes it.
+  // Returns { privateReveal } when the round resolves, else {}.
+  autoAdvanceSuggestion() {
+    const pending = this.pendingSuggestion;
+    while (pending.index < pending.responderOrder.length) {
+      const responder = this.players.find((p) => p.id === pending.responderOrder[pending.index]);
+      if (responder && responder.connected) return {};
+      this.log.push({ type: "system", message: `${responder?.name || "A player"} is away and was skipped.` });
+      pending.index += 1;
+    }
+    // Nobody could disprove.
+    const suggesterId = pending.by;
+    this.log.push({ type: "system", message: "No one could disprove that suggestion!" });
+    this.pendingSuggestion = null;
+    return { privateReveal: { suggesterId, shownCard: null } };
+  }
+
+  // A responder answers the current suggestion. action is "pass" (I hold none)
+  // or "show" with cardValue. Returns { privateReveal } when the round ends.
+  respondToSuggestion(playerId, { action, cardValue }) {
+    const pending = this.pendingSuggestion;
+    if (!pending) throw new Error("There's no suggestion to answer");
+    if (pending.responderOrder[pending.index] !== playerId) throw new Error("It's not your turn to answer");
+
+    const responder = this.players.find((p) => p.id === playerId);
+    const matches = this.cardsMatchingSuggestion(responder, pending.suggestion);
+
+    if (action === "show") {
+      const card = matches.find((c) => c.value === cardValue);
+      if (!card) throw new Error("You don't hold that card");
+      const suggester = this.players.find((p) => p.id === pending.by);
+      this.log.push({ type: "system", message: `${responder.name} disproved the suggestion by showing a card to ${suggester.name}.` });
+      this.pendingSuggestion = null;
+      return { privateReveal: { suggesterId: pending.by, shownCard: { type: card.type, value: card.value }, byName: responder.name } };
+    }
+
+    // action === "pass"
+    if (matches.length > 0) throw new Error("You hold one of these cards — you must show one");
+    this.log.push({ type: "system", message: `${responder.name} has none of those cards.` });
+    pending.index += 1;
+    return this.autoAdvanceSuggestion();
   }
 
   makeAccusation(playerId, { suspect, weapon, room }) {
     const player = this.assertTurn(playerId);
+    if (this.pendingSuggestion) throw new Error("Finish answering the current suggestion first");
+    if (!player.position.room) throw new Error("You must be in a room to make an accusation");
     const correct =
       this.solution.suspect === suspect &&
       this.solution.weapon === weapon &&
@@ -325,7 +363,30 @@ export class GameRoom {
 
   endTurn(playerId) {
     this.assertTurn(playerId);
+    if (this.pendingSuggestion) throw new Error("Wait for the table to answer your suggestion first");
     this.advanceTurn();
+  }
+
+  // Public + (for the current responder) private view of an in-flight
+  // suggestion, so the client can prompt whoever needs to answer.
+  pendingSuggestionFor(forPlayerId) {
+    const pending = this.pendingSuggestion;
+    if (!pending) return null;
+    const currentResponderId = pending.responderOrder[pending.index];
+    const responder = this.players.find((p) => p.id === currentResponderId);
+    const suggester = this.players.find((p) => p.id === pending.by);
+    const view = {
+      by: pending.by,
+      byName: suggester?.name,
+      suggestion: pending.suggestion,
+      currentResponderId,
+      currentResponderName: responder?.name,
+    };
+    if (forPlayerId === currentResponderId && responder) {
+      // Only you learn which of your own cards can disprove it.
+      view.yourMatches = this.cardsMatchingSuggestion(responder, pending.suggestion).map((c) => c.value);
+    }
+    return view;
   }
 
   // Turn state sent to a client. The current player also gets the set of
@@ -365,6 +426,7 @@ export class GameRoom {
       cardSets: this.status !== "lobby" ? getCardSets(this.players.length) : getCardSets(this.maxPlayers),
       board: this.board || null,
       turnState: this.status === "playing" ? this.turnStateFor(forPlayerId) : null,
+      pendingSuggestion: this.status === "playing" ? this.pendingSuggestionFor(forPlayerId) : null,
     };
   }
 }
