@@ -486,23 +486,23 @@ button.secondary {
 }
 
 .play-card {
-  width: 62px;
-  height: 88px;
-  border-radius: 8px;
+  width: 54px;
+  height: 74px;
+  border-radius: 7px;
   background: linear-gradient(160deg, color-mix(in srgb, var(--cc) 90%, #fff 10%), color-mix(in srgb, var(--cc) 70%, #000 30%));
   color: #fff;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  padding: 4px;
+  gap: 3px;
+  padding: 3px;
   box-shadow: 0 3px 8px rgba(0, 0, 0, 0.35);
   border: 2px solid rgba(255, 255, 255, 0.6);
 }
 
 .play-card-icon {
-  font-size: 1.7rem;
+  font-size: 1.45rem;
 }
 
 .play-card-name {
@@ -537,10 +537,15 @@ button.secondary {
 .drawer-body {
   flex: 1 1 auto;
   min-height: 0;
-  overflow: auto;
+  overflow: hidden;
   border: 1px solid color-mix(in srgb, canvas 80%, canvastext 20%);
   border-radius: 10px;
-  padding: 10px;
+  padding: 8px;
+}
+
+.game-log {
+  height: 100%;
+  overflow: auto;
 }
 
 .game-log ul {
@@ -569,39 +574,84 @@ button.secondary {
   font-size: 1.3rem;
 }
 
+.notepad {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.notepad-legend {
+  font-size: 0.62rem;
+  opacity: 0.65;
+  margin: 0 0 4px;
+  flex: 0 0 auto;
+  line-height: 1.15;
+}
+
 .notepad-scroll {
-  overflow-x: auto;
+  overflow: auto;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .notepad-table {
   border-collapse: collapse;
-  font-size: 0.85rem;
-  min-width: 100%;
+  font-size: 0.74rem;
+  width: 100%;
 }
 
 .notepad-table th,
 .notepad-table td {
-  border: 1px solid color-mix(in srgb, canvas 70%, canvastext 30%);
+  border: 1px solid color-mix(in srgb, canvas 74%, canvastext 26%);
 }
 
 .notepad-rowhead {
-  text-align: right;
-  padding: 4px 10px;
-  font-weight: 600;
+  padding: 0;
   white-space: nowrap;
 }
 
+.rowname-btn {
+  width: 100%;
+  text-align: right;
+  padding: 0 8px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.72rem;
+  color: inherit;
+  line-height: 1.1;
+}
+
+.rowname-btn.rowname-x {
+  text-decoration: line-through;
+  opacity: 0.5;
+}
+
+.rowname-btn.rowname-check {
+  color: #b8860b;
+  font-weight: 800;
+}
+
+.row-ruledout .notepad-cell {
+  opacity: 0.4;
+}
+
 .notepad-colhead {
-  padding: 4px 8px;
+  padding: 3px 5px;
   font-weight: 700;
   white-space: nowrap;
   vertical-align: bottom;
+  font-size: 0.72rem;
 }
 
 .notepad-colhead .you-tag {
   display: block;
-  margin: 2px auto 0;
+  margin: 1px auto 0;
   width: fit-content;
+  font-size: 0.55rem;
+  padding: 1px 4px;
 }
 
 .notepad-section-row .notepad-section-label {
@@ -609,9 +659,9 @@ button.secondary {
   font-weight: 800;
   letter-spacing: 1px;
   text-transform: uppercase;
-  padding: 6px;
+  padding: 1px;
   background: color-mix(in srgb, canvas 85%, canvastext 15%);
-  font-size: 0.75rem;
+  font-size: 0.6rem;
 }
 
 .notepad-td {
@@ -621,13 +671,15 @@ button.secondary {
 
 .notepad-cell {
   width: 100%;
-  min-width: 40px;
-  height: 30px;
+  min-width: 28px;
+  height: 15px;
   border: none;
   background: transparent;
   cursor: pointer;
   font-weight: 700;
-  font-size: 0.95rem;
+  font-size: 0.72rem;
+  color: inherit;
+  display: block;
 }
 
 .notepad-cell.mark-x {

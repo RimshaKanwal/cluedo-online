@@ -5,7 +5,8 @@ const MARKS = [undefined, "x", "check", "?"]; // click cycles through these
 const GLYPH = { x: "✕", check: "✓", "?": "?" };
 
 // Detective sheet: rows are the cards (suspects, weapons, rooms), columns are
-// the players. Mark each cell as you deduce who does or doesn't hold a card.
+// the players. Mark each cell as you deduce who holds a card, and click a card
+// name to cross the whole card off (ruled out) or star it (in the envelope).
 export default function Notepad({ cardSets, players, selfId }) {
   const [marks, setMarks] = useState(() => {
     try {
@@ -36,9 +37,8 @@ export default function Notepad({ cardSets, players, selfId }) {
   ];
 
   return (
-    <div>
-      <h3>Detective Notes</h3>
-      <p className="hint">Click a cell to cycle: blank → ✕ (doesn't have) → ✓ (has) → ? (maybe)</p>
+    <div className="notepad">
+      <p className="notepad-legend">Tap a name to rule it out ✕ / star ✓ · tap cells for per-player notes</p>
       <div className="notepad-scroll">
         <table className="notepad-table">
           <thead>
@@ -77,22 +77,35 @@ function FragmentSection({ label, items, players, marks, onCycle, sectionKey }) 
       <tr className="notepad-section-row">
         <td className="notepad-section-label" colSpan={players.length + 1}>{label}</td>
       </tr>
-      {items.map((item) => (
-        <tr key={item}>
-          <td className="notepad-rowhead">{item}</td>
-          {players.map((p) => {
-            const cellKey = `${sectionKey}:${item}:${p.id}`;
-            const mark = marks[cellKey];
-            return (
-              <td key={p.id} className="notepad-td">
-                <button className={`notepad-cell mark-${mark || "none"}`} onClick={() => onCycle(cellKey)}>
-                  {mark ? GLYPH[mark] : ""}
-                </button>
-              </td>
-            );
-          })}
-        </tr>
-      ))}
+      {items.map((item) => {
+        const nameKey = `name:${sectionKey}:${item}`;
+        const nameMark = marks[nameKey];
+        return (
+          <tr key={item} className={nameMark === "x" ? "row-ruledout" : ""}>
+            <td className="notepad-rowhead">
+              <button
+                className={`rowname-btn rowname-${nameMark || "none"}`}
+                onClick={() => onCycle(nameKey)}
+                title="Rule out / star this card"
+              >
+                {item}
+                {nameMark === "check" && " ⭐"}
+              </button>
+            </td>
+            {players.map((p) => {
+              const cellKey = `${sectionKey}:${item}:${p.id}`;
+              const mark = marks[cellKey];
+              return (
+                <td key={p.id} className="notepad-td">
+                  <button className={`notepad-cell mark-${mark || "none"}`} onClick={() => onCycle(cellKey)}>
+                    {mark ? GLYPH[mark] : ""}
+                  </button>
+                </td>
+              );
+            })}
+          </tr>
+        );
+      })}
     </>
   );
 }
