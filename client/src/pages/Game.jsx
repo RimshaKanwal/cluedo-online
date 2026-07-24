@@ -1,6 +1,30 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { socket } from "../socket";
 import Notepad from "../components/Notepad";
+
+// Set to true after dropping real image files into client/public/art/…
+// (see README). Files are looked up by slug, e.g.
+//   public/art/suspects/miss-scarlett.png
+//   public/art/weapons/candlestick.png
+//   public/art/rooms/kitchen.png
+// Any missing file falls back to the emoji, so a partial set is fine.
+const USE_CUSTOM_ART = false;
+const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+
+function Art({ kind, name, emoji, className }) {
+  const [failed, setFailed] = useState(false);
+  if (USE_CUSTOM_ART && !failed) {
+    return (
+      <img
+        className={`art-img ${className || ""}`}
+        src={`/art/${kind}/${slug(name)}.png`}
+        alt={name}
+        onError={() => setFailed(true)}
+      />
+    );
+  }
+  return <span className={className}>{emoji}</span>;
+}
 
 const SECRET_PASSAGES = {
   Kitchen: "Study",
@@ -49,12 +73,37 @@ function cardMeta(card) {
   return { icon: roomTheme(card.value).emoji, color: "#34558b" };
 }
 
+// Sizes board cells to fill the available area (the board is nearly square,
+// so height is usually the limit). Reserves room for the ringed avatars and
+// the status/controls beneath the board.
+function useFitCell(ref, rows, cols) {
+  const [cell, setCell] = useState(22);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const measure = () => {
+      const availW = el.clientWidth - 130;
+      const availH = el.clientHeight - 148 - 76;
+      const c = Math.floor(Math.min(availW / cols, availH / rows));
+      setCell(Math.max(15, Math.min(40, c)));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [ref, rows, cols]);
+  return cell;
+}
+
 export default function Game({ code, playerId, state }) {
   const self = state.players.find((p) => p.id === playerId);
   const isMyTurn = state.currentPlayerId === playerId;
   const currentPlayer = state.players.find((p) => p.id === state.currentPlayerId);
   const turnState = state.turnState || { diceValue: null, hasMoved: false, reachable: null };
   const board = state.board;
+
+  const tableRef = useRef(null);
+  const cell = useFitCell(tableRef, board.rows, board.cols);
 
   const reachableCellSet = useMemo(() => {
     const s = new Set();
@@ -178,9 +227,10 @@ export default function Game({ code, playerId, state }) {
 
   return (
     <div className="game-screen">
-      <div className="table-area">
+      <div className="table-area" ref={tableRef}>
         <SeatedBoard
           board={board}
+          cell={cell}
           players={state.players}
           turnOrder={state.turnOrder}
           currentId={state.currentPlayerId}
@@ -358,7 +408,7 @@ function seatPos(i, n) {
 }
 
 // Board with players seated around its perimeter in turn order.
-function SeatedBoard({ board, players, turnOrder, currentId, selfId, canMove, reachableCellSet, reachableRoomSet, onMoveCell, onMoveRoom }) {
+function SeatedBoard({ board, cell, players, turnOrder, currentId, selfId, canMove, reachableCellSet, reachableRoomSet, onMoveCell, onMoveRoom }) {
   const byId = Object.fromEntries(players.map((p) => [p.id, p]));
   const seated = (turnOrder || players.map((p) => p.id)).map((id) => byId[id]).filter(Boolean);
   const n = seated.length;
@@ -374,7 +424,7 @@ function SeatedBoard({ board, players, turnOrder, currentId, selfId, canMove, re
             className={`seat-avatar ${p.id === currentId ? "current" : ""} ${p.eliminated ? "eliminated" : ""}`}
             style={{ left: `${left}%`, top: `${top}%`, "--pc": meta.color }}
           >
-            <div className="seat-face">{meta.emoji}</div>
+            <div className="seat-face"><Art kind="suspects" name={p.character} emoji={meta.emoji} /></div>
             <div className="seat-name">
               {p.name}
               {p.id === selfId && " (you)"}
@@ -385,6 +435,7 @@ function SeatedBoard({ board, players, turnOrder, currentId, selfId, canMove, re
       })}
       <Board
         board={board}
+        cell={cell}
         players={players}
         canMove={canMove}
         reachableCellSet={reachableCellSet}
@@ -396,9 +447,7 @@ function SeatedBoard({ board, players, turnOrder, currentId, selfId, canMove, re
   );
 }
 
-const CELL = 17;
-
-function Board({ board, players, canMove, reachableCellSet, reachableRoomSet, onMoveCell, onMoveRoom }) {
+function Board({ board, cell, players, canMove, reachableCellSet, reachableRoomSet, onMoveCell, onMoveRoom }) {
   const cellTokens = new Map();
   const roomTokens = new Map();
   for (const p of players) {
@@ -413,8 +462,8 @@ function Board({ board, players, canMove, reachableCellSet, reachableRoomSet, on
   }
 
   const gridStyle = {
-    gridTemplateColumns: `repeat(${board.cols}, ${CELL}px)`,
-    gridTemplateRows: `repeat(${board.rows}, ${CELL}px)`,
+    gridTemplateColumns: `repeat(${board.cols}, ${cell}px)`,
+    gridTemplateRows: `repeat(${board.rows}, ${cell}px)`,
   };
 
   function token(p, small) {
@@ -449,7 +498,7 @@ function Board({ board, players, canMove, reachableCellSet, reachableRoomSet, on
               }}
               onClick={() => reachable && onMoveRoom(name)}
             >
-              <div className="room-emoji">{theme.emoji}</div>
+              <div className="room-emoji"><Art kind="rooms" name={name} emoji={theme.emoji} /></div>
               <div className="room-name">{name}</div>
               <div className="occupant-row">{(roomTokens.get(name) || []).map((p) => token(p, false))}</div>
             </div>
@@ -482,9 +531,10 @@ function Board({ board, players, canMove, reachableCellSet, reachableRoomSet, on
 
 function PlayingCard({ card }) {
   const meta = cardMeta(card);
+  const kind = card.type === "suspect" ? "suspects" : card.type === "weapon" ? "weapons" : "rooms";
   return (
     <div className="play-card" style={{ "--cc": meta.color }}>
-      <div className="play-card-icon">{meta.icon}</div>
+      <div className="play-card-icon"><Art kind={kind} name={card.value} emoji={meta.icon} /></div>
       <div className="play-card-name">{card.value}</div>
     </div>
   );
