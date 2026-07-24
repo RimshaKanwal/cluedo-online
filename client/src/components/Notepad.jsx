@@ -38,7 +38,7 @@ export default function Notepad({ cardSets, players, selfId }) {
 
   return (
     <div className="notepad">
-      <p className="notepad-legend">Tap a name to rule it out ✕ / star ✓ · tap cells for per-player notes</p>
+      <p className="notepad-legend">Tap names to rule out ✕ / star ✓ · cells = per-player</p>
       <div className="notepad-scroll">
         <table className="notepad-table">
           <thead>

@@ -83,10 +83,10 @@ function useFitCell(ref, rows, cols) {
     const el = ref.current;
     if (!el) return;
     const measure = () => {
-      const availW = el.clientWidth - 130;
-      const availH = el.clientHeight - 148 - 76;
+      const availW = el.clientWidth - 28;
+      const availH = el.clientHeight - 28;
       const c = Math.floor(Math.min(availW / cols, availH / rows));
-      setCell(Math.max(15, Math.min(40, c)));
+      setCell(Math.max(15, Math.min(44, c)));
     };
     measure();
     const ro = new ResizeObserver(measure);
@@ -250,64 +250,63 @@ export default function Game({ code, playerId, state }) {
     </span>
   );
 
+  const myActive = isMyTurn && !self.eliminated;
+
   return (
     <div className="game-screen">
-      <div className="table-area" ref={tableRef}>
-        <SeatedBoard
-          board={board}
-          cell={cell}
-          players={state.players}
-          turnOrder={state.turnOrder}
-          currentId={state.currentPlayerId}
-          selfId={playerId}
-          responses={state.lastSuggestion?.responses || {}}
-          canMove={canMove}
-          reachableCellSet={reachableCellSet}
-          reachableRoomSet={reachableRoomSet}
-          onMoveCell={moveToCell}
-          onMoveRoom={moveToRoom}
-        />
+      <PlayersRail
+        players={state.players}
+        turnOrder={state.turnOrder}
+        currentId={state.currentPlayerId}
+        selfId={playerId}
+        responses={state.lastSuggestion?.responses || {}}
+      />
 
-        <div className="status-row">
-          <div className="status-line">{statusLine}</div>
-          <button
-            className="sound-toggle"
-            title={soundOn ? "Mute sounds" : "Unmute sounds"}
-            onClick={() => setSoundOn(toggleSound())}
-          >
-            {soundOn ? "🔊" : "🔇"}
-          </button>
+      <div className="center-col">
+        <div className="board-stage" ref={tableRef}>
+          <Board
+            board={board}
+            cell={cell}
+            players={state.players}
+            canMove={canMove}
+            reachableCellSet={reachableCellSet}
+            reachableRoomSet={reachableRoomSet}
+            onMoveCell={moveToCell}
+            onMoveRoom={moveToRoom}
+          />
         </div>
 
-        {isMyTurn && !self.eliminated && (
-          <div className="controls-bar">
-            {turnState.diceValue == null && !turnState.hasMoved && !pending && (
-              <button className="primary dice-btn" onClick={rollDice}>🎲 Roll Dice</button>
+        <div className="controls-bar">
+          <div className="cb-status">
+            <span className={`turn-dot ${isMyTurn ? "on" : ""}`} />
+            <span className="status-line">{statusLine}</span>
+          </div>
+          <div className="cb-actions">
+            {myActive && turnState.diceValue == null && !turnState.hasMoved && !pending && (
+              <button className="cb-btn dice" onClick={rollDice}><span className="cb-ico">🎲</span>Roll Dice</button>
             )}
-            {turnState.diceValue != null && <span className="dice-value">🎲 {turnState.diceValue}</span>}
-            {canMove && (
-              <span className="hint">
-                {reachableRoomSet.size + reachableCellSet.size === 0
-                  ? "Nowhere to go — end turn"
-                  : "Click a highlighted square or room"}
-              </span>
+            {myActive && turnState.diceValue != null && !turnState.hasMoved && (
+              <span className="dice-value">🎲 {turnState.diceValue}</span>
             )}
-            {!turnState.hasMoved && !pending && passageTo && (
-              <button className="secondary" onClick={usePassage}>🕳️ Passage → {passageTo}</button>
+            {myActive && !turnState.hasMoved && !pending && passageTo && (
+              <button className="cb-btn passage" onClick={usePassage}><span className="cb-ico">🚪</span>Passage <small>→ {passageTo}</small></button>
             )}
-            {!pending && (
+            {myActive && !pending && (
               <>
-                <button onClick={() => setSuggestOpen(true)} disabled={!self.position.room} title={!self.position.room ? "Be in a room to suggest" : ""}>
-                  🔍 Suggest
+                <button className="cb-btn suggest" onClick={() => setSuggestOpen(true)} disabled={!self.position.room} title={!self.position.room ? "Be in a room to suggest" : ""}>
+                  <span className="cb-ico">🔍</span>Suggest
                 </button>
-                <button onClick={() => setAccuseOpen(true)} disabled={!self.position.room} title={!self.position.room ? "Be in a room to accuse" : ""}>
-                  ⚖️ Accuse
+                <button className="cb-btn accuse" onClick={() => setAccuseOpen(true)} disabled={!self.position.room} title={!self.position.room ? "Be in a room to accuse" : ""}>
+                  <span className="cb-ico">⚖️</span>Accuse
                 </button>
-                <button onClick={endTurn} className="secondary">End Turn ⏭</button>
+                <button className="cb-btn end" onClick={endTurn}><span className="cb-ico">🏳️</span>End Turn</button>
               </>
             )}
+            <button className="sound-toggle" title={soundOn ? "Mute sounds" : "Unmute sounds"} onClick={() => setSoundOn(toggleSound())}>
+              {soundOn ? "🔊" : "🔇"}
+            </button>
           </div>
-        )}
+        </div>
       </div>
 
       <aside className="side-drawer">
@@ -419,70 +418,40 @@ export default function Game({ code, playerId, state }) {
   );
 }
 
-// A seat position on a rectangular ring just outside the board, so avatars
-// never crowd the corners. Walks the perimeter clockwise from bottom-centre.
-function seatPos(i, n) {
-  const Lx = 5, Rx = 95, Ty = 6, By = 94;
-  const segs = [
-    { len: Rx - 50, from: [50, By], to: [Rx, By] },
-    { len: By - Ty, from: [Rx, By], to: [Rx, Ty] },
-    { len: Rx - Lx, from: [Rx, Ty], to: [Lx, Ty] },
-    { len: By - Ty, from: [Lx, Ty], to: [Lx, By] },
-    { len: 50 - Lx, from: [Lx, By], to: [50, By] },
-  ];
-  const total = segs.reduce((s, x) => s + x.len, 0);
-  let d = (i / n) * total;
-  for (const s of segs) {
-    if (d <= s.len) {
-      const f = s.len ? d / s.len : 0;
-      return { left: s.from[0] + (s.to[0] - s.from[0]) * f, top: s.from[1] + (s.to[1] - s.from[1]) * f };
-    }
-    d -= s.len;
-  }
-  return { left: 50, top: By };
-}
-
-// Board with players seated around its perimeter in turn order.
-function SeatedBoard({ board, cell, players, turnOrder, currentId, selfId, responses, canMove, reachableCellSet, reachableRoomSet, onMoveCell, onMoveRoom }) {
+// Left rail: players stacked in turn order, current one highlighted, with a
+// ✓/✕ badge showing how they answered the latest suggestion.
+function PlayersRail({ players, turnOrder, currentId, selfId, responses }) {
   const byId = Object.fromEntries(players.map((p) => [p.id, p]));
-  const seated = (turnOrder || players.map((p) => p.id)).map((id) => byId[id]).filter(Boolean);
-  const n = seated.length;
+  const ordered = (turnOrder || players.map((p) => p.id)).map((id) => byId[id]).filter(Boolean);
 
   return (
-    <div className="board-table">
-      {seated.map((p, i) => {
-        const { left, top } = seatPos(i, n);
+    <div className="players-rail">
+      {ordered.map((p) => {
         const meta = charMeta(p.character);
         const resp = responses[p.id];
         return (
           <div
             key={p.id}
-            className={`seat-avatar ${p.id === currentId ? "current" : ""} ${p.eliminated ? "eliminated" : ""}`}
-            style={{ left: `${left}%`, top: `${top}%`, "--pc": meta.color }}
+            className={`prail-card ${p.id === currentId ? "current" : ""} ${p.eliminated ? "eliminated" : ""}`}
+            style={{ "--pc": meta.color }}
           >
-            <div className="seat-face">
+            <div className="prail-avatar">
               <Art kind="suspects" name={p.character} emoji={meta.emoji} />
               {resp === "show" && <span className="resp-badge show" title="Showed a card">✓</span>}
               {resp === "pass" && <span className="resp-badge pass" title="Has none of these">✕</span>}
             </div>
-            <div className="seat-name">
-              {p.name}
-              {p.id === selfId && " (you)"}
+            <div className="prail-info">
+              <div className="prail-name">
+                {p.isHost && <span className="host-crown" title="Host">👑</span>}
+                {p.name}
+                {p.id === selfId && <span className="prail-you">you</span>}
+              </div>
+              <div className="prail-meta">{p.character}</div>
+              <div className="prail-cards">🂠 {p.cardCount} cards</div>
             </div>
-            <div className="seat-cardcount">🂠 {p.cardCount}</div>
           </div>
         );
       })}
-      <Board
-        board={board}
-        cell={cell}
-        players={players}
-        canMove={canMove}
-        reachableCellSet={reachableCellSet}
-        reachableRoomSet={reachableRoomSet}
-        onMoveCell={onMoveCell}
-        onMoveRoom={onMoveRoom}
-      />
     </div>
   );
 }
@@ -567,6 +536,7 @@ function Board({ board, cell, players, canMove, reachableCellSet, reachableRoomS
                 key={key}
                 className={`grid-cell ${isDoor ? "door-cell" : "corridor-cell"} ${reachable ? "reachable" : ""}`}
                 style={{ gridRow: r + 1, gridColumn: c + 1 }}
+                title={isDoor ? `Door — ${cell.room}` : undefined}
                 onClick={() => reachable && onMoveCell(r, c)}
               >
                 {occupants.map((p) => token(p, true))}
