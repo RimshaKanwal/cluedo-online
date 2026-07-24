@@ -22,6 +22,9 @@ export class GameRoom {
     this.turnState = { diceValue: null, hasMoved: false };
     this.board = null;
     this.pendingSuggestion = null;
+    // Latest suggestion's public results, shown on the table (avatar badges)
+    // so players don't have to read the log. Persists until the next one.
+    this.lastSuggestion = null;
   }
 
   get playerCount() {
@@ -106,6 +109,7 @@ export class GameRoom {
     this.winnerId = null;
     this.turnState = { diceValue: null, hasMoved: false };
     this.pendingSuggestion = null;
+    this.lastSuggestion = null;
   }
 
   get currentPlayerId() {
@@ -284,6 +288,7 @@ export class GameRoom {
     }
 
     this.pendingSuggestion = { by: playerId, suggestion: { suspect, weapon, room }, responderOrder, index: 0 };
+    this.lastSuggestion = { by: playerId, byName: player.name, suggestion: { suspect, weapon, room }, responses: {} };
     this.log.push({
       type: "suggestion",
       message: `${player.name} suggested it was ${suspect}, with the ${weapon}, in the ${room}. Going round the table...`,
@@ -301,6 +306,7 @@ export class GameRoom {
       const responder = this.players.find((p) => p.id === pending.responderOrder[pending.index]);
       if (responder && responder.connected) return {};
       this.log.push({ type: "system", message: `${responder?.name || "A player"} is away and was skipped.` });
+      if (responder && this.lastSuggestion) this.lastSuggestion.responses[responder.id] = "skip";
       pending.index += 1;
     }
     // Nobody could disprove.
@@ -326,6 +332,7 @@ export class GameRoom {
       if (!card) throw new Error("You don't hold that card");
       const suggester = this.players.find((p) => p.id === pending.by);
       this.log.push({ type: "system", message: `${responder.name} disproved the suggestion by showing a card to ${suggester.name}.` });
+      if (this.lastSuggestion) this.lastSuggestion.responses[playerId] = "show";
       const reveal = { suggesterId: pending.by, shownCard: { type: card.type, value: card.value }, byName: responder.name };
       this.pendingSuggestion = null;
       this.advanceTurn(); // suggestion resolved — end the suggester's turn
@@ -335,6 +342,7 @@ export class GameRoom {
     // action === "pass"
     if (matches.length > 0) throw new Error("You hold one of these cards — you must show one");
     this.log.push({ type: "system", message: `${responder.name} has none of those cards.` });
+    if (this.lastSuggestion) this.lastSuggestion.responses[playerId] = "pass";
     pending.index += 1;
     return this.autoAdvanceSuggestion();
   }
@@ -434,6 +442,7 @@ export class GameRoom {
       board: this.board || null,
       turnState: this.status === "playing" ? this.turnStateFor(forPlayerId) : null,
       pendingSuggestion: this.status === "playing" ? this.pendingSuggestionFor(forPlayerId) : null,
+      lastSuggestion: this.lastSuggestion,
     };
   }
 }

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { socket } from "../socket";
 import Notepad from "../components/Notepad";
+import { sfx, soundEnabled, toggleSound } from "../sound";
 
 // Set to true after dropping real image files into client/public/art/…
 // (see README). Files are looked up by slug, e.g.
@@ -142,6 +143,30 @@ export default function Game({ code, playerId, state }) {
   const canMove = isMyTurn && !self?.eliminated && !pending && turnState.diceValue != null && !turnState.hasMoved;
   const mustRespond = pending && pending.currentResponderId === playerId;
 
+  const [soundOn, setSoundOn] = useState(soundEnabled());
+
+  // Play sound cues on the meaningful state transitions.
+  const prev = useRef({ dice: null, turn: null, respCount: 0, finished: false });
+  useEffect(() => {
+    const p = prev.current;
+    if (turnState.diceValue != null && p.dice == null) sfx.dice();
+    if (state.currentPlayerId === playerId && p.turn !== playerId && !pending) sfx.turn();
+    const responses = state.lastSuggestion?.responses || {};
+    const values = Object.values(responses);
+    if (values.length > p.respCount) {
+      const latest = values[values.length - 1];
+      if (latest === "show") sfx.show();
+      else if (latest === "pass") sfx.pass();
+    }
+    if (state.status === "finished" && !p.finished) sfx.win();
+    prev.current = {
+      dice: turnState.diceValue,
+      turn: state.currentPlayerId,
+      respCount: values.length,
+      finished: state.status === "finished",
+    };
+  }, [turnState.diceValue, state.currentPlayerId, state.lastSuggestion, state.status, playerId, pending]);
+
   function rollDice() {
     socket.emit("rollDice", { code, playerId });
   }
@@ -235,6 +260,7 @@ export default function Game({ code, playerId, state }) {
           turnOrder={state.turnOrder}
           currentId={state.currentPlayerId}
           selfId={playerId}
+          responses={state.lastSuggestion?.responses || {}}
           canMove={canMove}
           reachableCellSet={reachableCellSet}
           reachableRoomSet={reachableRoomSet}
@@ -242,7 +268,16 @@ export default function Game({ code, playerId, state }) {
           onMoveRoom={moveToRoom}
         />
 
-        <div className="status-line">{statusLine}</div>
+        <div className="status-row">
+          <div className="status-line">{statusLine}</div>
+          <button
+            className="sound-toggle"
+            title={soundOn ? "Mute sounds" : "Unmute sounds"}
+            onClick={() => setSoundOn(toggleSound())}
+          >
+            {soundOn ? "🔊" : "🔇"}
+          </button>
+        </div>
 
         {isMyTurn && !self.eliminated && (
           <div className="controls-bar">
@@ -408,7 +443,7 @@ function seatPos(i, n) {
 }
 
 // Board with players seated around its perimeter in turn order.
-function SeatedBoard({ board, cell, players, turnOrder, currentId, selfId, canMove, reachableCellSet, reachableRoomSet, onMoveCell, onMoveRoom }) {
+function SeatedBoard({ board, cell, players, turnOrder, currentId, selfId, responses, canMove, reachableCellSet, reachableRoomSet, onMoveCell, onMoveRoom }) {
   const byId = Object.fromEntries(players.map((p) => [p.id, p]));
   const seated = (turnOrder || players.map((p) => p.id)).map((id) => byId[id]).filter(Boolean);
   const n = seated.length;
@@ -418,13 +453,18 @@ function SeatedBoard({ board, cell, players, turnOrder, currentId, selfId, canMo
       {seated.map((p, i) => {
         const { left, top } = seatPos(i, n);
         const meta = charMeta(p.character);
+        const resp = responses[p.id];
         return (
           <div
             key={p.id}
             className={`seat-avatar ${p.id === currentId ? "current" : ""} ${p.eliminated ? "eliminated" : ""}`}
             style={{ left: `${left}%`, top: `${top}%`, "--pc": meta.color }}
           >
-            <div className="seat-face"><Art kind="suspects" name={p.character} emoji={meta.emoji} /></div>
+            <div className="seat-face">
+              <Art kind="suspects" name={p.character} emoji={meta.emoji} />
+              {resp === "show" && <span className="resp-badge show" title="Showed a card">✓</span>}
+              {resp === "pass" && <span className="resp-badge pass" title="Has none of these">✕</span>}
+            </div>
             <div className="seat-name">
               {p.name}
               {p.id === selfId && " (you)"}
@@ -480,9 +520,19 @@ function Board({ board, cell, players, canMove, reachableCellSet, reachableRoomS
     );
   }
 
+  // The dead centre (classic games) gets a decorative "case file" crest.
+  const hasCellar = !!board.rooms.Cellar;
+
   return (
     <div className="board-wrap">
       <div className="board-cells" style={gridStyle}>
+        {!hasCellar && (
+          <div className="board-centerpiece" style={{ gridRow: "11 / 17", gridColumn: "10 / 16" }}>
+            <div className="crest-envelope">✉</div>
+            <div className="crest-title">CLUEDO</div>
+            <div className="crest-sub">The Case File</div>
+          </div>
+        )}
         {Object.entries(board.rooms).map(([name, room]) => {
           const { r0, r1, c0, c1 } = room.rect;
           const reachable = canMove && reachableRoomSet.has(name);
