@@ -19,7 +19,7 @@ export class GameRoom {
     this.turnIndex = 0;
     this.log = [];
     this.winnerId = null;
-    this.turnState = { diceValue: null, hasMoved: false };
+    this.turnState = { diceValue: null, hasMoved: false, hasSuggested: false };
     this.board = null;
     this.pendingSuggestion = null;
     // Latest suggestion's public results, shown on the table (avatar badges)
@@ -107,7 +107,7 @@ export class GameRoom {
     this.status = "playing";
     this.log = [{ type: "system", message: "The game has begun. Good luck, detectives." }];
     this.winnerId = null;
-    this.turnState = { diceValue: null, hasMoved: false };
+    this.turnState = { diceValue: null, hasMoved: false, hasSuggested: false };
     this.pendingSuggestion = null;
     this.lastSuggestion = null;
   }
@@ -144,7 +144,7 @@ export class GameRoom {
       const p = this.players.find((pl) => pl.id === this.currentPlayerId);
       if (p && !p.eliminated) break;
     }
-    this.turnState = { diceValue: null, hasMoved: false };
+    this.turnState = { diceValue: null, hasMoved: false, hasSuggested: false };
     this.pendingSuggestion = null;
   }
 
@@ -273,6 +273,8 @@ export class GameRoom {
   makeSuggestion(playerId, { suspect, weapon, room }) {
     const player = this.assertTurn(playerId);
     if (this.pendingSuggestion) throw new Error("A suggestion is already being answered");
+    if (this.turnState.hasSuggested) throw new Error("You've already made a suggestion this turn");
+    this.turnState.hasSuggested = true;
     // Classic rule: the suggested room must be where the suggesting player
     // currently is, and the accused suspect's token is moved into that room.
     player.position = { room, cell: null };
@@ -313,7 +315,7 @@ export class GameRoom {
     const suggesterId = pending.by;
     this.log.push({ type: "system", message: "No one could disprove that suggestion!" });
     this.pendingSuggestion = null;
-    this.advanceTurn(); // the suggestion was the suggester's action — end their turn
+    // Turn stays with the suggester — they may now accuse or end their turn.
     return { privateReveal: { suggesterId, shownCard: null } };
   }
 
@@ -335,7 +337,7 @@ export class GameRoom {
       if (this.lastSuggestion) this.lastSuggestion.responses[playerId] = "show";
       const reveal = { suggesterId: pending.by, shownCard: { type: card.type, value: card.value }, byName: responder.name };
       this.pendingSuggestion = null;
-      this.advanceTurn(); // suggestion resolved — end the suggester's turn
+      // Turn stays with the suggester — they may now accuse or end their turn.
       return { privateReveal: reveal };
     }
 
@@ -407,7 +409,12 @@ export class GameRoom {
   // squares/rooms they can legally reach with their roll, so the board can
   // highlight moves without re-implementing pathfinding.
   turnStateFor(forPlayerId) {
-    const base = { diceValue: this.turnState.diceValue, hasMoved: this.turnState.hasMoved, reachable: null };
+    const base = {
+      diceValue: this.turnState.diceValue,
+      hasMoved: this.turnState.hasMoved,
+      hasSuggested: this.turnState.hasSuggested,
+      reachable: null,
+    };
     if (forPlayerId === this.currentPlayerId && this.turnState.diceValue != null && !this.turnState.hasMoved) {
       const player = this.currentPlayer();
       if (player && !player.eliminated) base.reachable = this.computeReachable(player, this.turnState.diceValue);

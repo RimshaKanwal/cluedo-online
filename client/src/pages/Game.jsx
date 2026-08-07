@@ -293,7 +293,12 @@ export default function Game({ code, playerId, state }) {
             )}
             {myActive && !pending && (
               <>
-                <button className="cb-btn suggest" onClick={() => setSuggestOpen(true)} disabled={!self.position.room} title={!self.position.room ? "Be in a room to suggest" : ""}>
+                <button
+                  className="cb-btn suggest"
+                  onClick={() => setSuggestOpen(true)}
+                  disabled={!self.position.room || turnState.hasSuggested}
+                  title={turnState.hasSuggested ? "Already suggested this turn" : !self.position.room ? "Be in a room to suggest" : ""}
+                >
                   <span className="cb-ico">🔍</span>Suggest
                 </button>
                 <button className="cb-btn accuse" onClick={() => setAccuseOpen(true)} disabled={!self.position.room} title={!self.position.room ? "Be in a room to accuse" : ""}>
