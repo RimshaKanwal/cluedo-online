@@ -151,7 +151,7 @@ export class GameRoom {
   rollDice(playerId) {
     const player = this.assertTurn(playerId);
     if (this.turnState.diceValue != null) throw new Error("You've already rolled this turn");
-    const value = 1 + Math.floor(Math.random() * 6);
+    const value = 1 + Math.floor(Math.random() * 12);
     this.turnState.diceValue = value;
     this.log.push({ type: "system", message: `${player.name} rolled a ${value}.` });
     return value;
