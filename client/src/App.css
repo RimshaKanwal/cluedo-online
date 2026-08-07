@@ -315,6 +315,16 @@ button.secondary {
   filter: grayscale(0.7);
 }
 
+.prail-card.offline {
+  opacity: 0.55;
+}
+
+.prail-offline {
+  color: #d64550;
+  margin-left: 4px;
+  font-weight: 700;
+}
+
 .prail-avatar {
   position: relative;
   flex: 0 0 auto;

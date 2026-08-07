@@ -138,6 +138,21 @@ export default function Game({ code, playerId, state }) {
     };
   }, []);
 
+  // A card-reveal/accusation result is only relevant for a little while —
+  // clear it automatically so the status line goes back to showing whose
+  // turn it is, instead of getting stuck on old news forever.
+  useEffect(() => {
+    if (!lastResult) return;
+    const t = setTimeout(() => setLastResult(null), 6000);
+    return () => clearTimeout(t);
+  }, [lastResult]);
+
+  // Also clear it the moment the turn actually changes, so a new turn never
+  // shows a stale reveal from a previous one.
+  useEffect(() => {
+    setLastResult(null);
+  }, [state.currentPlayerId]);
+
   const passageTo = self?.position.room ? SECRET_PASSAGES[self.position.room] : null;
   const pending = state.pendingSuggestion;
   const canMove = isMyTurn && !self?.eliminated && !pending && turnState.diceValue != null && !turnState.hasMoved;
@@ -437,7 +452,7 @@ function PlayersRail({ players, turnOrder, currentId, selfId, responses }) {
         return (
           <div
             key={p.id}
-            className={`prail-card ${p.id === currentId ? "current" : ""} ${p.eliminated ? "eliminated" : ""}`}
+            className={`prail-card ${p.id === currentId ? "current" : ""} ${p.eliminated ? "eliminated" : ""} ${!p.connected ? "offline" : ""}`}
             style={{ "--pc": meta.color }}
           >
             <div className="prail-avatar">
@@ -452,7 +467,9 @@ function PlayersRail({ players, turnOrder, currentId, selfId, responses }) {
                 {p.id === selfId && <span className="prail-you">you</span>}
               </div>
               <div className="prail-meta">{p.character}</div>
-              <div className="prail-cards">🂠 {p.cardCount} cards</div>
+              <div className="prail-cards">
+                🂠 {p.cardCount} cards{!p.connected && <span className="prail-offline">· offline</span>}
+              </div>
             </div>
           </div>
         );

@@ -62,6 +62,25 @@ io.on("connection", (socket) => {
     wrap(socket, () => {
       const room = manager.getRoom(code);
       if (!room) throw new Error("Room not found. Check the code and try again.");
+
+      // If the game is already going, let a returning player reclaim their
+      // seat by name (they left / got disconnected) instead of being blocked.
+      if (room.status !== "lobby") {
+        const seat = room.players.find(
+          (p) => !p.connected && p.name.trim().toLowerCase() === (name || "").trim().toLowerCase()
+        );
+        if (!seat) throw new Error("Game already in progress — ask them to finish, or rejoin with the exact name you played as.");
+        seat.socketId = socket.id;
+        seat.connected = true;
+        socket.join(room.code);
+        socket.data.code = room.code;
+        socket.data.playerId = seat.id;
+        socket.emit("joined", { code: room.code, playerId: seat.id });
+        room.log.push({ type: "system", message: `${seat.name} rejoined the game.` });
+        broadcastState(room.code);
+        return;
+      }
+
       const player = room.addPlayer(socket.id, name);
       socket.join(room.code);
       socket.data.code = room.code;
@@ -69,6 +88,25 @@ io.on("connection", (socket) => {
       socket.emit("joined", { code: room.code, playerId: player.id });
       broadcastState(room.code);
     });
+  });
+
+  // Silent reconnect (page reload / network blip): reattach by playerId.
+  socket.on("rejoin", ({ code, playerId }) => {
+    const room = manager.getRoom(code);
+    const player = room?.players.find((p) => p.id === playerId);
+    if (!room || !player) {
+      socket.emit("sessionEnded");
+      return;
+    }
+    const wasOffline = !player.connected;
+    player.socketId = socket.id;
+    player.connected = true;
+    socket.join(room.code);
+    socket.data.code = room.code;
+    socket.data.playerId = player.id;
+    socket.emit("joined", { code: room.code, playerId: player.id });
+    if (wasOffline) room.log.push({ type: "system", message: `${player.name} reconnected.` });
+    broadcastState(room.code);
   });
 
   socket.on("startGame", ({ code, playerId }) => {
