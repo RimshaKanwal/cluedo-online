@@ -322,7 +322,6 @@ export default function Game({ code, playerId, state, onLeave }) {
         currentId={state.currentPlayerId}
         selfId={playerId}
         responses={state.lastSuggestion?.responses || {}}
-        movedPlayerId={state.lastSuggestion?.movedPlayerId}
       />
 
       <div className="center-col">
@@ -488,7 +487,7 @@ export default function Game({ code, playerId, state, onLeave }) {
 
 // Left rail: players stacked in turn order, current one highlighted, with a
 // ✓/✕ badge showing how they answered the latest suggestion.
-function PlayersRail({ players, turnOrder, currentId, selfId, responses, movedPlayerId }) {
+function PlayersRail({ players, turnOrder, currentId, selfId, responses }) {
   const byId = Object.fromEntries(players.map((p) => [p.id, p]));
   const ordered = (turnOrder || players.map((p) => p.id)).map((id) => byId[id]).filter(Boolean);
 
@@ -497,7 +496,6 @@ function PlayersRail({ players, turnOrder, currentId, selfId, responses, movedPl
       {ordered.map((p) => {
         const meta = charMeta(p.character);
         const resp = responses[p.id];
-        const wasMoved = p.id === movedPlayerId;
         return (
           <div
             key={p.id}
@@ -519,11 +517,6 @@ function PlayersRail({ players, turnOrder, currentId, selfId, responses, movedPl
               <div className="prail-cards">
                 🂠 {p.cardCount} cards{!p.connected && <span className="prail-offline">· offline</span>}
               </div>
-              {wasMoved && (
-                <div className="prail-moved" title="Someone suggested this character, so their token got pulled into that room — not their own move">
-                  📍 pulled into {p.position?.room} by a suggestion
-                </div>
-              )}
             </div>
           </div>
         );

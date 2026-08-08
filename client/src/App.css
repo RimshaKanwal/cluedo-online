@@ -387,14 +387,6 @@ button.secondary {
   margin-top: 1px;
 }
 
-.prail-moved {
-  font-size: 0.62rem;
-  color: #8fb8ff;
-  margin-top: 3px;
-  line-height: 1.2;
-  animation: badge-pop 0.35s cubic-bezier(0.2, 1.4, 0.4, 1);
-}
-
 /* ✓ / ✕ badge that pops onto an avatar when they answer a suggestion. */
 .resp-badge {
   position: absolute;

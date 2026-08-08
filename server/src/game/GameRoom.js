@@ -275,15 +275,10 @@ export class GameRoom {
     if (this.pendingSuggestion) throw new Error("A suggestion is already being answered");
     if (this.turnState.hasSuggested) throw new Error("You've already made a suggestion this turn");
     this.turnState.hasSuggested = true;
-    // Classic rule: the suggested room must be where the suggesting player
-    // currently is, and the accused suspect's token is moved into that room
-    // — even if that suspect is played by someone else, and even if it isn't
-    // their turn. This is correct Cluedo behavior, but silent/confusing
-    // without a clear callout, so we log it explicitly and flag it in
-    // lastSuggestion so the table can show whose token just relocated.
+    // The suggested room must be where the suggesting player currently is.
+    // (Note: classic Cluedo also teleports the accused suspect's own token
+    // into that room — deliberately not done here.)
     player.position = { room, cell: null };
-    const suspectPlayer = this.players.find((p) => p.character === suspect);
-    if (suspectPlayer && suspectPlayer.id !== playerId) suspectPlayer.position = { room, cell: null };
 
     // Everyone else answers in turn order, starting to the suggester's left.
     const order = this.turnOrder;
@@ -294,23 +289,11 @@ export class GameRoom {
     }
 
     this.pendingSuggestion = { by: playerId, suggestion: { suspect, weapon, room }, responderOrder, index: 0 };
-    this.lastSuggestion = {
-      by: playerId,
-      byName: player.name,
-      suggestion: { suspect, weapon, room },
-      responses: {},
-      movedPlayerId: suspectPlayer && suspectPlayer.id !== playerId ? suspectPlayer.id : null,
-    };
+    this.lastSuggestion = { by: playerId, byName: player.name, suggestion: { suspect, weapon, room }, responses: {} };
     this.log.push({
       type: "suggestion",
       message: `${player.name} suggested it was ${suspect}, with the ${weapon}, in the ${room}. Going round the table...`,
     });
-    if (suspectPlayer && suspectPlayer.id !== playerId) {
-      this.log.push({
-        type: "system",
-        message: `${suspectPlayer.name}'s token (${suspect}) was moved into the ${room} — that's just the suggestion pulling their character in, not their move.`,
-      });
-    }
 
     // Skip past anyone who's disconnected (they can't show a card).
     return this.autoAdvanceSuggestion();
