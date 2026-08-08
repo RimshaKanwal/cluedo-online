@@ -45,9 +45,28 @@ function wrap(socket, fn) {
   }
 }
 
+// Detaches a socket from whatever room it was previously in — marks it
+// disconnected there and stops relaying that room's broadcasts to it —
+// so switching games (or explicitly leaving) can't leave a stale
+// subscription that later overwrites the new game's state on the client.
+function leavePreviousRoom(socket) {
+  const prevCode = socket.data.code;
+  if (!prevCode) return;
+  socket.leave(prevCode);
+  const prevRoom = manager.getRoom(prevCode);
+  if (prevRoom) {
+    prevRoom.removePlayerBySocket(socket.id);
+    if (prevRoom.players.length === 0) manager.deleteRoom(prevCode);
+    else broadcastState(prevCode);
+  }
+  socket.data.code = null;
+  socket.data.playerId = null;
+}
+
 io.on("connection", (socket) => {
   socket.on("createGame", ({ name, maxPlayers }) => {
     wrap(socket, () => {
+      leavePreviousRoom(socket);
       const room = manager.createRoom(maxPlayers);
       const player = room.addPlayer(socket.id, name);
       socket.join(room.code);
@@ -70,6 +89,7 @@ io.on("connection", (socket) => {
           (p) => !p.connected && p.name.trim().toLowerCase() === (name || "").trim().toLowerCase()
         );
         if (!seat) throw new Error("Game already in progress — ask them to finish, or rejoin with the exact name you played as.");
+        leavePreviousRoom(socket);
         seat.socketId = socket.id;
         seat.connected = true;
         socket.join(room.code);
@@ -81,6 +101,7 @@ io.on("connection", (socket) => {
         return;
       }
 
+      leavePreviousRoom(socket);
       const player = room.addPlayer(socket.id, name);
       socket.join(room.code);
       socket.data.code = room.code;
@@ -98,6 +119,7 @@ io.on("connection", (socket) => {
       socket.emit("sessionEnded");
       return;
     }
+    if (socket.data.code && socket.data.code !== code) leavePreviousRoom(socket);
     const wasOffline = !player.connected;
     player.socketId = socket.id;
     player.connected = true;
@@ -107,6 +129,13 @@ io.on("connection", (socket) => {
     socket.emit("joined", { code: room.code, playerId: player.id });
     if (wasOffline) room.log.push({ type: "system", message: `${player.name} reconnected.` });
     broadcastState(room.code);
+  });
+
+  // Explicit "leave" — e.g. clicking New Game from a finished board. Frees
+  // the seat (and the room, if everyone's gone) instead of leaving a ghost
+  // player sitting in a game nobody will return to.
+  socket.on("leaveGame", () => {
+    leavePreviousRoom(socket);
   });
 
   socket.on("startGame", ({ code, playerId }) => {
@@ -191,12 +220,25 @@ io.on("connection", (socket) => {
     if (!code) return;
     const room = manager.getRoom(code);
     if (!room) return;
-    room.removePlayerBySocket(socket.id);
-    if (room.players.length === 0) {
-      manager.deleteRoom(code);
-    } else {
-      broadcastState(code);
-    }
+    const player = room.players.find((p) => p.socketId === socket.id);
+    if (!player) return;
+    player.connected = false;
+    broadcastState(code);
+
+    // Grace period before actually freeing the seat: a page reload
+    // disconnects then reconnects almost immediately, and without this an
+    // in-progress rejoin can lose the race — fatally so for a lone player
+    // in a lobby they just created, since removing them empties the room.
+    const playerId = player.id;
+    setTimeout(() => {
+      const stillRoom = manager.getRoom(code);
+      if (!stillRoom) return;
+      const stillThere = stillRoom.players.find((p) => p.id === playerId);
+      if (!stillThere || stillThere.connected) return; // reconnected in time
+      stillRoom.removePlayerBySocket(socket.id);
+      if (stillRoom.players.length === 0) manager.deleteRoom(code);
+      else broadcastState(code);
+    }, 8000);
   });
 });
 

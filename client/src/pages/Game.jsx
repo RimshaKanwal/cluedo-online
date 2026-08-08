@@ -96,7 +96,7 @@ function useFitCell(ref, rows, cols) {
   return cell;
 }
 
-export default function Game({ code, playerId, state }) {
+export default function Game({ code, playerId, state, onLeave }) {
   const self = state.players.find((p) => p.id === playerId);
   const isMyTurn = state.currentPlayerId === playerId;
   const currentPlayer = state.players.find((p) => p.id === state.currentPlayerId);
@@ -237,6 +237,9 @@ export default function Game({ code, playerId, state }) {
           </p>
         )}
         <GameLog log={state.log} />
+        <button className="primary" onClick={onLeave} style={{ marginTop: 16 }}>
+          New Game
+        </button>
       </div>
     );
   }

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { socket } from "./socket";
 import Home from "./pages/Home";
 import Lobby from "./pages/Lobby";
@@ -22,6 +22,23 @@ export default function App() {
   const [error, setError] = useState(null);
   const session = useRef(loadSession()); // { code, playerId }
 
+  const resetToHome = useCallback(() => {
+    session.current = null;
+    localStorage.removeItem(SESSION_KEY);
+    setCode(null);
+    setPlayerId(null);
+    setState(null);
+    window.history.replaceState(null, "", "/");
+  }, []);
+
+  // Deliberately leaving a finished game: tell the server so it can drop
+  // this socket from the old room, then forget the session — otherwise a
+  // reload (or the next auto-rejoin) would pull you right back into it.
+  const leaveGame = useCallback(() => {
+    socket.emit("leaveGame");
+    resetToHome();
+  }, [resetToHome]);
+
   useEffect(() => {
     function attemptRejoin() {
       if (session.current?.code && session.current?.playerId) {
@@ -39,13 +56,6 @@ export default function App() {
     }
     function onState(newState) {
       setState(newState);
-    }
-    function resetToHome() {
-      session.current = null;
-      localStorage.removeItem(SESSION_KEY);
-      setCode(null);
-      setPlayerId(null);
-      setState(null);
     }
     function onSessionEnded() {
       resetToHome();
@@ -75,7 +85,7 @@ export default function App() {
       socket.off("sessionEnded", onSessionEnded);
       socket.off("errorMessage", onError);
     };
-  }, []);
+  }, [resetToHome]);
 
   let content;
   if (!code || !state) {
@@ -83,7 +93,7 @@ export default function App() {
   } else if (state.status === "lobby") {
     content = <Lobby code={code} playerId={playerId} state={state} />;
   } else {
-    content = <Game code={code} playerId={playerId} state={state} />;
+    content = <Game code={code} playerId={playerId} state={state} onLeave={leaveGame} />;
   }
 
   return (
