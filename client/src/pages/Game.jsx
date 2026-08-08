@@ -138,20 +138,24 @@ export default function Game({ code, playerId, state, onLeave }) {
     };
   }, []);
 
-  // A card-reveal/accusation result is only relevant for a little while —
-  // clear it automatically so the status line goes back to showing whose
-  // turn it is, instead of getting stuck on old news forever.
+  // A card-reveal/accusation result stays up long enough to actually read —
+  // and since suggesting no longer ends your turn, clearing it the instant
+  // currentPlayerId changed used to wipe it the moment you clicked End Turn,
+  // sometimes within a second of it appearing. Just use a generous timeout.
   useEffect(() => {
     if (!lastResult) return;
-    const t = setTimeout(() => setLastResult(null), 6000);
+    const t = setTimeout(() => setLastResult(null), 20000);
     return () => clearTimeout(t);
   }, [lastResult]);
 
-  // Also clear it the moment the turn actually changes, so a new turn never
-  // shows a stale reveal from a previous one.
+  // Clear it once a fresh suggestion starts, so a new round doesn't show a
+  // stale reveal from the previous one.
+  const pendingStartedRef = useRef(false);
   useEffect(() => {
-    setLastResult(null);
-  }, [state.currentPlayerId]);
+    const justStarted = !!state.pendingSuggestion && !pendingStartedRef.current;
+    pendingStartedRef.current = !!state.pendingSuggestion;
+    if (justStarted) setLastResult(null);
+  }, [state.pendingSuggestion]);
 
   const passageTo = self?.position.room ? SECRET_PASSAGES[self.position.room] : null;
   const pending = state.pendingSuggestion;
