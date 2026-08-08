@@ -75,6 +75,14 @@ export const sfx = {
     if (!enabled) return;
     [523, 659, 784, 1047].forEach((f, i) => beep(f, i * 0.12, 0.18, { gain: 0.09 }));
   },
+  // Playful two-tone alarm sweep for the "your turn" nag popup.
+  siren() {
+    if (!enabled) return;
+    for (let i = 0; i < 3; i++) {
+      beep(700, i * 0.3, 0.15, { type: "square", gain: 0.06 });
+      beep(1000, i * 0.3 + 0.15, 0.15, { type: "square", gain: 0.06 });
+    }
+  },
 };
 
 export function soundEnabled() {

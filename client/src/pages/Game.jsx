@@ -162,6 +162,30 @@ export default function Game({ code, playerId, state, onLeave }) {
   const canMove = isMyTurn && !self?.eliminated && !pending && turnState.diceValue != null && !turnState.hasMoved;
   const mustRespond = pending && pending.currentResponderId === playerId;
 
+  // Playful nag: if whoever's up (the current player, or the responder
+  // mid-suggestion) hasn't done anything for 7s, pop up a reminder with a
+  // siren. Resets on any sign of progress; purely local/for-fun, not synced.
+  const [showNag, setShowNag] = useState(false);
+  const upNowId = pending ? pending.currentResponderId : state.currentPlayerId;
+  const progressSignature = JSON.stringify([
+    state.currentPlayerId,
+    turnState.diceValue,
+    turnState.hasMoved,
+    turnState.hasSuggested,
+    pending?.currentResponderId,
+    pending?.index,
+  ]);
+  useEffect(() => {
+    setShowNag(false);
+    if (state.status !== "playing" || !upNowId) return;
+    const t = setTimeout(() => {
+      setShowNag(true);
+      sfx.siren();
+    }, 7000);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [progressSignature, state.status]);
+
   const [soundOn, setSoundOn] = useState(soundEnabled());
 
   // Play sound cues on the meaningful state transitions.
@@ -276,12 +300,21 @@ export default function Game({ code, playerId, state, onLeave }) {
 
   return (
     <div className="game-screen">
+      {showNag && (
+        <div className="nag-toast">
+          <span className="nag-siren">🚨</span>
+          <span className="nag-text">Hanan aap ke baari hai!</span>
+          <button className="nag-close" onClick={() => setShowNag(false)} title="Dismiss">×</button>
+        </div>
+      )}
+
       <PlayersRail
         players={state.players}
         turnOrder={state.turnOrder}
         currentId={state.currentPlayerId}
         selfId={playerId}
         responses={state.lastSuggestion?.responses || {}}
+        movedPlayerId={state.lastSuggestion?.movedPlayerId}
       />
 
       <div className="center-col">
@@ -447,7 +480,7 @@ export default function Game({ code, playerId, state, onLeave }) {
 
 // Left rail: players stacked in turn order, current one highlighted, with a
 // ✓/✕ badge showing how they answered the latest suggestion.
-function PlayersRail({ players, turnOrder, currentId, selfId, responses }) {
+function PlayersRail({ players, turnOrder, currentId, selfId, responses, movedPlayerId }) {
   const byId = Object.fromEntries(players.map((p) => [p.id, p]));
   const ordered = (turnOrder || players.map((p) => p.id)).map((id) => byId[id]).filter(Boolean);
 
@@ -456,6 +489,7 @@ function PlayersRail({ players, turnOrder, currentId, selfId, responses }) {
       {ordered.map((p) => {
         const meta = charMeta(p.character);
         const resp = responses[p.id];
+        const wasMoved = p.id === movedPlayerId;
         return (
           <div
             key={p.id}
@@ -477,6 +511,11 @@ function PlayersRail({ players, turnOrder, currentId, selfId, responses }) {
               <div className="prail-cards">
                 🂠 {p.cardCount} cards{!p.connected && <span className="prail-offline">· offline</span>}
               </div>
+              {wasMoved && (
+                <div className="prail-moved" title="Someone suggested this character, so their token got pulled into that room — not their own move">
+                  📍 pulled into {p.position?.room} by a suggestion
+                </div>
+              )}
             </div>
           </div>
         );

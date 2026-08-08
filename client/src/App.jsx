@@ -7,7 +7,16 @@ import "./App.css";
 
 const SESSION_KEY = "cluedo-session";
 
+// Only auto-rejoin when the URL itself points at a game (a shareable
+// /join/<code> link, or the /join/<code> the app rewrites the address bar
+// to while you're in one). Opening the bare site root is always treated as
+// "start fresh" — otherwise a saved session kept dragging people back into
+// a finished game every time they revisited the home URL.
 function loadSession() {
+  if (!/^\/join\//.test(window.location.pathname)) {
+    localStorage.removeItem(SESSION_KEY);
+    return null;
+  }
   try {
     return JSON.parse(localStorage.getItem(SESSION_KEY) || "null");
   } catch {

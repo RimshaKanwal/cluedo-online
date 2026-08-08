@@ -387,6 +387,14 @@ button.secondary {
   margin-top: 1px;
 }
 
+.prail-moved {
+  font-size: 0.62rem;
+  color: #8fb8ff;
+  margin-top: 3px;
+  line-height: 1.2;
+  animation: badge-pop 0.35s cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+
 /* ✓ / ✕ badge that pops onto an avatar when they answer a suggestion. */
 .resp-badge {
   position: absolute;
@@ -832,6 +840,57 @@ button.secondary {
   border-radius: 6px;
   background: var(--panel-2);
   border: 1px solid var(--line);
+}
+
+/* Playful "your turn" nag toast — floats over the board, never blocks input. */
+.nag-toast {
+  position: fixed;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 18px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #c0392b, #8e1f16);
+  border: 2px solid #ffb199;
+  color: #fff;
+  font-weight: 800;
+  font-size: 1.05rem;
+  box-shadow: 0 10px 30px rgba(192, 57, 43, 0.55), 0 0 0 6px rgba(192, 57, 43, 0.18);
+  pointer-events: auto;
+  animation: nag-pop 0.3s cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+
+.nag-siren {
+  font-size: 1.3rem;
+  display: inline-block;
+  animation: nag-spin 0.9s linear infinite;
+}
+
+.nag-close {
+  border: none;
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  margin-left: 4px;
+}
+
+@keyframes nag-pop {
+  0% { transform: translateX(-50%) scale(0.6); opacity: 0; }
+  100% { transform: translateX(-50%) scale(1); opacity: 1; }
+}
+
+@keyframes nag-spin {
+  0%, 100% { transform: rotate(-15deg); }
+  50% { transform: rotate(15deg); }
 }
 
 .finished-card {
