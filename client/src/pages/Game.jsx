@@ -162,29 +162,28 @@ export default function Game({ code, playerId, state, onLeave }) {
   const canMove = isMyTurn && !self?.eliminated && !pending && turnState.diceValue != null && !turnState.hasMoved;
   const mustRespond = pending && pending.currentResponderId === playerId;
 
-  // Playful nag: if whoever's up (the current player, or the responder
-  // mid-suggestion) hasn't done anything for 7s, pop up a reminder with a
-  // siren. Resets on any sign of progress; purely local/for-fun, not synced.
+  // Playful nag: only about the very start of a turn — if the current
+  // player hasn't rolled the dice within 7s. Fires once per turn (not
+  // repeatedly), stays off once they roll, and a dismiss silences it for
+  // the rest of that turn instead of it popping back up again.
   const [showNag, setShowNag] = useState(false);
-  const upNowId = pending ? pending.currentResponderId : state.currentPlayerId;
-  const progressSignature = JSON.stringify([
-    state.currentPlayerId,
-    turnState.diceValue,
-    turnState.hasMoved,
-    turnState.hasSuggested,
-    pending?.currentResponderId,
-    pending?.index,
-  ]);
+  const [nagDismissed, setNagDismissed] = useState(false);
   useEffect(() => {
     setShowNag(false);
-    if (state.status !== "playing" || !upNowId) return;
+    setNagDismissed(false);
+  }, [state.currentPlayerId]);
+  useEffect(() => {
+    if (state.status !== "playing") return;
+    if (pending || turnState.diceValue != null || nagDismissed) {
+      setShowNag(false);
+      return;
+    }
     const t = setTimeout(() => {
       setShowNag(true);
       sfx.siren();
     }, 7000);
     return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [progressSignature, state.status]);
+  }, [state.status, state.currentPlayerId, turnState.diceValue, pending, nagDismissed]);
 
   const [soundOn, setSoundOn] = useState(soundEnabled());
 
@@ -304,7 +303,16 @@ export default function Game({ code, playerId, state, onLeave }) {
         <div className="nag-toast">
           <span className="nag-siren">🚨</span>
           <span className="nag-text">Hanan aap ke baari hai!</span>
-          <button className="nag-close" onClick={() => setShowNag(false)} title="Dismiss">×</button>
+          <button
+            className="nag-close"
+            onClick={() => {
+              setShowNag(false);
+              setNagDismissed(true);
+            }}
+            title="Dismiss"
+          >
+            ×
+          </button>
         </div>
       )}
 
