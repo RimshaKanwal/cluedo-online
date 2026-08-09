@@ -937,13 +937,66 @@ button.secondary {
 }
 
 .finished-card {
-  max-width: 520px;
+  max-width: 1100px;
   margin: 40px auto;
   text-align: center;
+  overflow-y: auto;
+  max-height: calc(100vh - 80px);
 }
 
 .finished-winner {
   font-size: 1.3rem;
+}
+
+.notes-reveal {
+  margin-top: 20px;
+  text-align: left;
+}
+
+.notes-reveal h3 {
+  color: var(--gold);
+  text-align: center;
+  margin-bottom: 12px;
+}
+
+.notes-reveal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 14px;
+}
+
+.notes-reveal-sheet {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.notes-reveal-owner {
+  font-weight: 800;
+  color: var(--gold);
+  margin-bottom: 6px;
+  font-size: 0.85rem;
+}
+
+.rowname-static {
+  display: block;
+  width: 100%;
+  text-align: right;
+  padding: 0 8px;
+  font-weight: 600;
+  font-size: 0.72rem;
+  line-height: 1.1;
+}
+
+.rowname-static.rowname-x {
+  text-decoration: line-through;
+  opacity: 0.5;
+}
+
+.rowname-static.rowname-check {
+  color: var(--gold);
+  font-weight: 800;
 }
 
 .notepad {

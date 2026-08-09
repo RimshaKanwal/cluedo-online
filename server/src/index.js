@@ -215,6 +215,15 @@ io.on("connection", (socket) => {
     });
   });
 
+  socket.on("submitFinalNotes", ({ code, playerId, marks }) => {
+    wrap(socket, () => {
+      const gameRoom = manager.getRoom(code);
+      if (!gameRoom) throw new Error("Room not found");
+      gameRoom.submitFinalNotes(playerId, marks);
+      broadcastState(code);
+    });
+  });
+
   socket.on("disconnect", () => {
     const { code } = socket.data;
     if (!code) return;

@@ -25,6 +25,10 @@ export class GameRoom {
     // Latest suggestion's public results, shown on the table (avatar badges)
     // so players don't have to read the log. Persists until the next one.
     this.lastSuggestion = null;
+    // Once the game ends, each player's personal deduction notepad (their
+    // local ✓/✕/? markings) gets submitted here so everyone can see how
+    // everyone else's reasoning went.
+    this.finalNotes = {};
   }
 
   get playerCount() {
@@ -110,6 +114,7 @@ export class GameRoom {
     this.turnState = { diceValue: null, hasMoved: false, hasSuggested: false };
     this.pendingSuggestion = null;
     this.lastSuggestion = null;
+    this.finalNotes = {};
   }
 
   get currentPlayerId() {
@@ -382,6 +387,16 @@ export class GameRoom {
     this.advanceTurn();
   }
 
+  // A player publishing their personal notepad once the case is closed, so
+  // everyone can compare deductions. Only accepted after the game ends —
+  // it's a reveal, not something visible mid-game.
+  submitFinalNotes(playerId, marks) {
+    if (this.status !== "finished") throw new Error("The game hasn't ended yet");
+    const player = this.players.find((p) => p.id === playerId);
+    if (!player) throw new Error("Unknown player");
+    this.finalNotes[playerId] = marks && typeof marks === "object" ? marks : {};
+  }
+
   // Public + (for the current responder) private view of an in-flight
   // suggestion, so the client can prompt whoever needs to answer.
   pendingSuggestionFor(forPlayerId) {
@@ -449,6 +464,7 @@ export class GameRoom {
       turnState: this.status === "playing" ? this.turnStateFor(forPlayerId) : null,
       pendingSuggestion: this.status === "playing" ? this.pendingSuggestionFor(forPlayerId) : null,
       lastSuggestion: this.lastSuggestion,
+      finalNotes: this.status === "finished" ? this.finalNotes : undefined,
     };
   }
 }

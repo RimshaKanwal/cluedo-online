@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { socket } from "../socket";
-import Notepad from "../components/Notepad";
+import Notepad, { NOTEPAD_STORAGE_KEY } from "../components/Notepad";
+import NotesReveal from "../components/NotesReveal";
 import { sfx, soundEnabled, toggleSound } from "../sound";
 
 // Set to true after dropping real image files into client/public/art/…
@@ -248,26 +249,7 @@ export default function Game({ code, playerId, state, onLeave }) {
 
   if (state.status === "finished") {
     return (
-      <div className="card finished-card">
-        <h2>🔍 Case Closed</h2>
-        {state.winnerId ? (
-          <p className="finished-winner">
-            🏆 <strong>{state.players.find((p) => p.id === state.winnerId)?.name}</strong> cracked the case!
-          </p>
-        ) : (
-          <p>Everyone accused wrongly — the culprit got away.</p>
-        )}
-        {state.solution && (
-          <p className="finished-solution">
-            It was <strong>{state.solution.suspect}</strong> with the <strong>{state.solution.weapon}</strong> in the{" "}
-            <strong>{state.solution.room}</strong>.
-          </p>
-        )}
-        <GameLog log={state.log} />
-        <button className="primary" onClick={onLeave} style={{ marginTop: 16 }}>
-          New Game
-        </button>
-      </div>
+      <FinishedScreen code={code} playerId={playerId} state={state} onLeave={onLeave} />
     );
   }
 
@@ -672,6 +654,47 @@ function PlayingCard({ card }) {
     <div className="play-card" style={{ "--cc": meta.color }}>
       <div className="play-card-icon"><Art kind={kind} name={card.value} emoji={meta.icon} /></div>
       <div className="play-card-name">{card.value}</div>
+    </div>
+  );
+}
+
+function FinishedScreen({ code, playerId, state, onLeave }) {
+  // Publish this browser's personal deduction notepad once, so the reveal
+  // below can show everyone's notes side by side.
+  const submittedRef = useRef(false);
+  useEffect(() => {
+    if (submittedRef.current) return;
+    submittedRef.current = true;
+    let marks = {};
+    try {
+      marks = JSON.parse(localStorage.getItem(NOTEPAD_STORAGE_KEY) || "{}");
+    } catch {
+      marks = {};
+    }
+    socket.emit("submitFinalNotes", { code, playerId, marks });
+  }, [code, playerId]);
+
+  return (
+    <div className="card finished-card">
+      <h2>🔍 Case Closed</h2>
+      {state.winnerId ? (
+        <p className="finished-winner">
+          🏆 <strong>{state.players.find((p) => p.id === state.winnerId)?.name}</strong> cracked the case!
+        </p>
+      ) : (
+        <p>Everyone accused wrongly — the culprit got away.</p>
+      )}
+      {state.solution && (
+        <p className="finished-solution">
+          It was <strong>{state.solution.suspect}</strong> with the <strong>{state.solution.weapon}</strong> in the{" "}
+          <strong>{state.solution.room}</strong>.
+        </p>
+      )}
+      <GameLog log={state.log} />
+      <NotesReveal finalNotes={state.finalNotes || {}} players={state.players} cardSets={state.cardSets} />
+      <button className="primary" onClick={onLeave} style={{ marginTop: 16 }}>
+        New Game
+      </button>
     </div>
   );
 }

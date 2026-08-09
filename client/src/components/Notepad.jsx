@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 
-const STORAGE_KEY = "cluedo-notepad";
+export const NOTEPAD_STORAGE_KEY = "cluedo-notepad";
+export const NOTEPAD_GLYPH = { x: "✕", check: "✓", "?": "?" };
 const MARKS = [undefined, "x", "check", "?"]; // click cycles through these
-const GLYPH = { x: "✕", check: "✓", "?": "?" };
 
 // Detective sheet: rows are the cards (suspects, weapons, rooms), columns are
 // the players. Mark each cell as you deduce who holds a card, and click a card
@@ -10,14 +10,14 @@ const GLYPH = { x: "✕", check: "✓", "?": "?" };
 export default function Notepad({ cardSets, players, selfId }) {
   const [marks, setMarks] = useState(() => {
     try {
-      return JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+      return JSON.parse(localStorage.getItem(NOTEPAD_STORAGE_KEY) || "{}");
     } catch {
       return {};
     }
   });
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(marks));
+    localStorage.setItem(NOTEPAD_STORAGE_KEY, JSON.stringify(marks));
   }, [marks]);
 
   function cycle(key) {
@@ -98,7 +98,7 @@ function FragmentSection({ label, items, players, marks, onCycle, sectionKey }) 
               return (
                 <td key={p.id} className="notepad-td">
                   <button className={`notepad-cell mark-${mark || "none"}`} onClick={() => onCycle(cellKey)}>
-                    {mark ? GLYPH[mark] : ""}
+                    {mark ? NOTEPAD_GLYPH[mark] : ""}
                   </button>
                 </td>
               );
