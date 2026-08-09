@@ -388,6 +388,15 @@ export default function Game({ code, playerId, state, onLeave }) {
           </div>
         </div>
 
+        {state.lastSuggestion && (
+          <LastSuggestionRecap
+            lastSuggestion={state.lastSuggestion}
+            players={state.players}
+            selfId={playerId}
+            shownCard={state.lastSuggestion.by === playerId ? lastResult?.shownCard : null}
+          />
+        )}
+
         <div className="drawer-tabs">
           <button className={tab === "notes" ? "tab active" : "tab"} onClick={() => setTab("notes")}>Notes</button>
           <button className={tab === "log" ? "tab active" : "tab"} onClick={() => setTab("log")}>Log</button>
@@ -614,6 +623,44 @@ function Board({ board, cell, players, canMove, reachableCellSet, reachableRoomS
           })
         )}
       </div>
+    </div>
+  );
+}
+
+// Always-visible recap of the latest suggestion and how the table answered
+// it — lives above the Notes/Log tabs so you don't have to leave your notes
+// to see who showed a card (and, if it was shown to you, what it was).
+function LastSuggestionRecap({ lastSuggestion, players, selfId, shownCard }) {
+  const byId = Object.fromEntries(players.map((p) => [p.id, p]));
+  const { byName, suggestion, responses } = lastSuggestion;
+  const answered = Object.entries(responses);
+
+  return (
+    <div className="recap-card">
+      <div className="recap-title">Last Suggestion</div>
+      <div className="recap-line">
+        <strong>{byName}</strong>: {suggestion.suspect} · {suggestion.weapon} · {suggestion.room}
+      </div>
+      {answered.length > 0 && (
+        <div className="recap-answers">
+          {answered.map(([pid, action]) => {
+            const p = byId[pid];
+            if (!p) return null;
+            const icon = action === "show" ? "✓" : action === "pass" ? "✕" : "…";
+            return (
+              <span key={pid} className={`recap-chip recap-${action}`}>
+                {icon} {p.name}
+                {p.id === selfId && " (you)"}
+              </span>
+            );
+          })}
+        </div>
+      )}
+      {shownCard && (
+        <div className="recap-shown">
+          Shown to you: <strong>{shownCard.value}</strong>
+        </div>
+      )}
     </div>
   );
 }

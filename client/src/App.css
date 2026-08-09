@@ -778,6 +778,57 @@ button.secondary {
   cursor: pointer;
 }
 
+.recap-card {
+  flex: 0 0 auto;
+  background: var(--panel);
+  border: 1px solid var(--gold-dim);
+  border-radius: 10px;
+  padding: 7px 10px;
+  font-size: 0.72rem;
+}
+
+.recap-title {
+  color: var(--gold);
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  margin-bottom: 3px;
+}
+
+.recap-line {
+  color: var(--ink);
+  line-height: 1.25;
+}
+
+.recap-answers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 5px;
+}
+
+.recap-chip {
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-size: 0.66rem;
+  font-weight: 700;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+}
+
+.recap-chip.recap-show { color: #4fd383; border-color: #2e9e5b; }
+.recap-chip.recap-pass { color: #ff8a80; border-color: #d64550; }
+.recap-chip.recap-skip { color: var(--muted); }
+
+.recap-shown {
+  margin-top: 5px;
+  padding-top: 5px;
+  border-top: 1px dashed var(--line);
+  color: var(--gold);
+  font-size: 0.72rem;
+}
+
 .drawer-tabs {
   display: flex;
   gap: 6px;
