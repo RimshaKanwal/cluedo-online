@@ -104,6 +104,15 @@ export default function Game({ code, playerId, state, onLeave }) {
   const turnState = state.turnState || { diceValue: null, hasMoved: false, reachable: null };
   const board = state.board;
 
+  // Single canonical player order (matches turn order) used everywhere a
+  // player list is shown — the rail, notepad columns, notes reveal, and
+  // suggestion-answer chips — so they never disagree with each other.
+  const orderedPlayers = useMemo(() => {
+    if (!state.turnOrder) return state.players;
+    const byId = Object.fromEntries(state.players.map((p) => [p.id, p]));
+    return state.turnOrder.map((id) => byId[id]).filter(Boolean);
+  }, [state.players, state.turnOrder]);
+
   const tableRef = useRef(null);
   const cell = useFitCell(tableRef, board.rows, board.cols);
 
@@ -373,7 +382,7 @@ export default function Game({ code, playerId, state, onLeave }) {
         {state.lastSuggestion && (
           <LastSuggestionRecap
             lastSuggestion={state.lastSuggestion}
-            players={state.players}
+            players={orderedPlayers}
             selfId={playerId}
             shownCard={state.lastSuggestion.by === playerId ? lastResult?.shownCard : null}
           />
@@ -385,7 +394,7 @@ export default function Game({ code, playerId, state, onLeave }) {
         </div>
         <div className="drawer-body">
           {tab === "notes" ? (
-            <Notepad cardSets={state.cardSets} players={state.players} selfId={playerId} />
+            <Notepad cardSets={state.cardSets} players={orderedPlayers} selfId={playerId} />
           ) : (
             <GameLog log={state.log} />
           )}
@@ -614,8 +623,12 @@ function Board({ board, cell, players, canMove, reachableCellSet, reachableRoomS
 // to see who showed a card (and, if it was shown to you, what it was).
 function LastSuggestionRecap({ lastSuggestion, players, selfId, shownCard }) {
   const byId = Object.fromEntries(players.map((p) => [p.id, p]));
+  const orderIndex = Object.fromEntries(players.map((p, i) => [p.id, i]));
   const { byName, suggestion, responses } = lastSuggestion;
-  const answered = Object.entries(responses);
+  // Sort by the same canonical order as the rail/notes (not the order they
+  // happened to answer in), so this list never disagrees with the rest of
+  // the UI about who comes before whom.
+  const answered = Object.entries(responses).sort(([a], [b]) => orderIndex[a] - orderIndex[b]);
 
   return (
     <div className="recap-card">
@@ -659,6 +672,14 @@ function PlayingCard({ card }) {
 }
 
 function FinishedScreen({ code, playerId, state, onLeave }) {
+  // Same canonical turn-order sort used throughout the live game, so the
+  // notes reveal lines up with how players were shown during play.
+  const orderedPlayers = useMemo(() => {
+    if (!state.turnOrder) return state.players;
+    const byId = Object.fromEntries(state.players.map((p) => [p.id, p]));
+    return state.turnOrder.map((id) => byId[id]).filter(Boolean);
+  }, [state.players, state.turnOrder]);
+
   // Publish this browser's personal deduction notepad once, so the reveal
   // below can show everyone's notes side by side.
   const submittedRef = useRef(false);
@@ -691,7 +712,7 @@ function FinishedScreen({ code, playerId, state, onLeave }) {
         </p>
       )}
       <GameLog log={state.log} />
-      <NotesReveal finalNotes={state.finalNotes || {}} players={state.players} cardSets={state.cardSets} />
+      <NotesReveal finalNotes={state.finalNotes || {}} players={orderedPlayers} cardSets={state.cardSets} />
       <button className="primary" onClick={onLeave} style={{ marginTop: 16 }}>
         New Game
       </button>
