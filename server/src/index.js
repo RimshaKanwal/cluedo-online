@@ -4,16 +4,61 @@ import cors from "cors";
 import { Server } from "socket.io";
 import { GameManager } from "./game/gameManager.js";
 import { MIN_PLAYERS, MAX_PLAYERS } from "./game/constants.js";
+import { initSchema } from "./db.js";
+import { registerOrLogin, verifyToken, getUserById, getLeaderboard, recordGameResult } from "./auth.js";
 
 const PORT = process.env.PORT || 4000;
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || "http://localhost:5173";
 
 const app = express();
 app.use(cors({ origin: CLIENT_ORIGIN }));
+app.use(express.json());
 app.get("/health", (_req, res) => res.json({ ok: true }));
+
+app.post("/api/auth", async (req, res) => {
+  try {
+    const { token, user } = await registerOrLogin(req.body?.username, req.body?.pin);
+    res.json({ token, ...user });
+  } catch (err) {
+    res.status(400).json({ error: err.message || "Sign-in failed" });
+  }
+});
+
+app.get("/api/me", async (req, res) => {
+  try {
+    const token = (req.headers.authorization || "").replace(/^Bearer\s+/i, "");
+    const decoded = verifyToken(token);
+    const user = await getUserById(decoded.userId);
+    res.json(user);
+  } catch {
+    res.status(401).json({ error: "Invalid or expired session" });
+  }
+});
+
+app.get("/api/leaderboard", async (_req, res) => {
+  try {
+    res.json(await getLeaderboard());
+  } catch (err) {
+    res.status(500).json({ error: err.message || "Could not load leaderboard" });
+  }
+});
 
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: CLIENT_ORIGIN } });
+
+// Every socket connection must carry a valid account token (issued by
+// POST /api/auth) — createGame/joinGame derive the player's display name
+// from this instead of trusting free-typed client input, so wins/losses
+// land on the right account regardless of what anyone types.
+io.use((socket, next) => {
+  try {
+    const decoded = verifyToken(socket.handshake.auth?.token);
+    socket.data.user = { userId: decoded.userId, username: decoded.username };
+    next();
+  } catch {
+    next(new Error("unauthenticated"));
+  }
+});
 
 const manager = new GameManager();
 
@@ -64,11 +109,11 @@ function leavePreviousRoom(socket) {
 }
 
 io.on("connection", (socket) => {
-  socket.on("createGame", ({ name, maxPlayers }) => {
+  socket.on("createGame", ({ maxPlayers }) => {
     wrap(socket, () => {
       leavePreviousRoom(socket);
       const room = manager.createRoom(maxPlayers);
-      const player = room.addPlayer(socket.id, name);
+      const player = room.addPlayer(socket.id, socket.data.user.username, socket.data.user.userId);
       socket.join(room.code);
       socket.data.code = room.code;
       socket.data.playerId = player.id;
@@ -77,18 +122,20 @@ io.on("connection", (socket) => {
     });
   });
 
-  socket.on("joinGame", ({ code, name }) => {
+  socket.on("joinGame", ({ code }) => {
     wrap(socket, () => {
       const room = manager.getRoom(code);
       if (!room) throw new Error("Room not found. Check the code and try again.");
+      const myUsername = socket.data.user.username.trim().toLowerCase();
 
       // If the game is already going, let a returning player reclaim their
-      // seat by name (they left / got disconnected) instead of being blocked.
+      // seat by account (they left / got disconnected) instead of being
+      // blocked — matched by account, not by whatever they type.
       if (room.status !== "lobby") {
         const seat = room.players.find(
-          (p) => !p.connected && p.name.trim().toLowerCase() === (name || "").trim().toLowerCase()
+          (p) => !p.connected && p.name.trim().toLowerCase() === myUsername
         );
-        if (!seat) throw new Error("Game already in progress — ask them to finish, or rejoin with the exact name you played as.");
+        if (!seat) throw new Error("Game already in progress — ask them to finish, or sign back in as the account you played as.");
         leavePreviousRoom(socket);
         seat.socketId = socket.id;
         seat.connected = true;
@@ -102,7 +149,7 @@ io.on("connection", (socket) => {
       }
 
       leavePreviousRoom(socket);
-      const player = room.addPlayer(socket.id, name);
+      const player = room.addPlayer(socket.id, socket.data.user.username, socket.data.user.userId);
       socket.join(room.code);
       socket.data.code = room.code;
       socket.data.playerId = player.id;
@@ -203,6 +250,17 @@ io.on("connection", (socket) => {
       const result = gameRoom.makeAccusation(playerId, accusation);
       broadcastState(code);
       socket.emit("accusationResult", result);
+
+      // A wrong accusation can eliminate the last active player, ending the
+      // game right here too — either way, record it exactly once.
+      if (gameRoom.status === "finished" && !gameRoom.resultRecorded) {
+        gameRoom.resultRecorded = true;
+        const winnerPlayer = gameRoom.players.find((p) => p.id === gameRoom.winnerId);
+        const playerUserIds = gameRoom.players.map((p) => p.userId).filter(Boolean);
+        recordGameResult(playerUserIds, winnerPlayer?.userId ?? null).catch((err) => {
+          console.error("Failed to record game result:", err.message);
+        });
+      }
     });
   });
 
@@ -251,7 +309,14 @@ io.on("connection", (socket) => {
   });
 });
 
-server.listen(PORT, () => {
-  console.log(`Cluedo server listening on port ${PORT}`);
-  console.log(`Allowed player range: ${MIN_PLAYERS}-${MAX_PLAYERS}`);
-});
+initSchema()
+  .then(() => {
+    server.listen(PORT, () => {
+      console.log(`Cluedo server listening on port ${PORT}`);
+      console.log(`Allowed player range: ${MIN_PLAYERS}-${MAX_PLAYERS}`);
+    });
+  })
+  .catch((err) => {
+    console.error("Failed to initialize database schema:", err.message);
+    process.exit(1);
+  });

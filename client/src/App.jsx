@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { socket } from "./socket";
+import { socket, setAuthToken } from "./socket";
+import { getStoredToken, storeToken, clearToken, fetchMe } from "./auth";
+import SignIn from "./pages/SignIn";
 import Home from "./pages/Home";
 import Lobby from "./pages/Lobby";
 import Game from "./pages/Game";
+import Leaderboard from "./pages/Leaderboard";
 import "./App.css";
 
 const SESSION_KEY = "cluedo-session";
@@ -25,11 +28,51 @@ function loadSession() {
 }
 
 export default function App() {
+  const [account, setAccount] = useState(null); // { userId, username, wins, gamesPlayed }
+  const [checkingSession, setCheckingSession] = useState(true);
+  const [view, setView] = useState("game"); // "game" | "leaderboard"
+
   const [code, setCode] = useState(null);
   const [playerId, setPlayerId] = useState(null);
   const [state, setState] = useState(null);
   const [error, setError] = useState(null);
   const session = useRef(loadSession()); // { code, playerId }
+
+  // Restore a signed-in session (if any) on first load.
+  useEffect(() => {
+    const token = getStoredToken();
+    if (!token) {
+      setCheckingSession(false);
+      return;
+    }
+    fetchMe(token)
+      .then((me) => {
+        setAccount(me);
+        setAuthToken(token);
+      })
+      .catch(() => {
+        clearToken();
+      })
+      .finally(() => setCheckingSession(false));
+  }, []);
+
+  function handleSignedIn(data) {
+    storeToken(data.token);
+    setAccount({ userId: data.userId, username: data.username, wins: data.wins, gamesPlayed: data.gamesPlayed });
+    setAuthToken(data.token);
+  }
+
+  function handleSignOut() {
+    clearToken();
+    setAuthToken(null);
+    setAccount(null);
+    setCode(null);
+    setPlayerId(null);
+    setState(null);
+    session.current = null;
+    localStorage.removeItem(SESSION_KEY);
+    window.history.replaceState(null, "", "/");
+  }
 
   const resetToHome = useCallback(() => {
     session.current = null;
@@ -97,8 +140,14 @@ export default function App() {
   }, [resetToHome]);
 
   let content;
-  if (!code || !state) {
-    content = <Home />;
+  if (checkingSession) {
+    content = null;
+  } else if (!account) {
+    content = <SignIn onSignedIn={handleSignedIn} />;
+  } else if (view === "leaderboard") {
+    content = <Leaderboard onBack={() => setView("game")} />;
+  } else if (!code || !state) {
+    content = <Home onShowLeaderboard={() => setView("leaderboard")} />;
   } else if (state.status === "lobby") {
     content = <Lobby code={code} playerId={playerId} state={state} />;
   } else {
@@ -109,7 +158,17 @@ export default function App() {
     <div className="app-shell">
       <header className="app-header">
         <h1>🔎 Cluedo Online</h1>
-        {code && <span className="room-code-badge">Room: {code}</span>}
+        <div className="header-right">
+          {code && <span className="room-code-badge">Room: {code}</span>}
+          {account && (
+            <div className="account-chip">
+              <span>{account.username} · {account.wins}🏆</span>
+              <button className="account-signout" onClick={handleSignOut} title="Sign out">
+                ×
+              </button>
+            </div>
+          )}
+        </div>
       </header>
       {error && <div className="error-banner">{error}</div>}
       <main>{content}</main>

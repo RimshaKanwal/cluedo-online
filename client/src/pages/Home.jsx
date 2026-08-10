@@ -9,23 +9,21 @@ function codeFromJoinLink() {
   return match ? match[1].toUpperCase() : "";
 }
 
-export default function Home() {
+export default function Home({ onShowLeaderboard }) {
   const initialJoinCode = codeFromJoinLink();
   const [mode, setMode] = useState(initialJoinCode ? "join" : "create"); // create | join
-  const [name, setName] = useState("");
   const [maxPlayers, setMaxPlayers] = useState(6);
   const [joinCode, setJoinCode] = useState(initialJoinCode);
 
   function handleCreate(e) {
     e.preventDefault();
-    if (!name.trim()) return;
-    socket.emit("createGame", { name, maxPlayers });
+    socket.emit("createGame", { maxPlayers });
   }
 
   function handleJoin(e) {
     e.preventDefault();
-    if (!name.trim() || !joinCode.trim()) return;
-    socket.emit("joinGame", { name, code: joinCode.trim().toUpperCase() });
+    if (!joinCode.trim()) return;
+    socket.emit("joinGame", { code: joinCode.trim().toUpperCase() });
   }
 
   return (
@@ -41,11 +39,6 @@ export default function Home() {
 
       {mode === "create" ? (
         <form onSubmit={handleCreate} className="form">
-          <label>
-            Your name
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Alex" maxLength={20} required />
-          </label>
-
           <label>
             Number of players ({MIN_PLAYERS}-{MAX_PLAYERS})
             <div className="player-count-row">
@@ -70,10 +63,6 @@ export default function Home() {
       ) : (
         <form onSubmit={handleJoin} className="form">
           <label>
-            Your name
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Alex" maxLength={20} required />
-          </label>
-          <label>
             Room code
             <input
               value={joinCode}
@@ -87,6 +76,10 @@ export default function Home() {
           <button type="submit" className="primary">Join Room</button>
         </form>
       )}
+
+      <button className="secondary leaderboard-link" onClick={onShowLeaderboard}>
+        🏆 Leaderboard
+      </button>
     </div>
   );
 }

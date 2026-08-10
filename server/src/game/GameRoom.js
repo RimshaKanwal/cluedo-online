@@ -29,19 +29,23 @@ export class GameRoom {
     // local ✓/✕/? markings) gets submitted here so everyone can see how
     // everyone else's reasoning went.
     this.finalNotes = {};
+    // Guards against double-recording wins/games_played if the finish path
+    // is somehow reached more than once.
+    this.resultRecorded = false;
   }
 
   get playerCount() {
     return this.players.length;
   }
 
-  addPlayer(socketId, name) {
+  addPlayer(socketId, name, userId = null) {
     if (this.status !== "lobby") throw new Error("Game already started");
     if (this.players.length >= this.maxPlayers) throw new Error("Room is full");
     const id = `p${this.players.length + 1}_${Math.random().toString(36).slice(2, 8)}`;
     const player = {
       id,
       socketId,
+      userId, // links back to the account, for recording wins/games_played
       name: name?.trim() || `Player ${this.players.length + 1}`,
       character: null,
       cards: [],
@@ -115,6 +119,7 @@ export class GameRoom {
     this.pendingSuggestion = null;
     this.lastSuggestion = null;
     this.finalNotes = {};
+    this.resultRecorded = false;
   }
 
   get currentPlayerId() {
