@@ -46,10 +46,19 @@ export class GameRoom {
     // into a fresh object, so identity/content alone can't distinguish them).
     this.lastAccusation = null;
     this.accusationSeq = 0;
+    // Log entries commonly repeat verbatim (e.g. "X moved down the hall."
+    // fires every corridor step), so clients can't use message text to tell
+    // "already seen" apart from "new" — tag each entry with a monotonic seq.
+    this.logSeq = 0;
   }
 
   get playerCount() {
     return this.players.length;
+  }
+
+  pushLog(type, message) {
+    this.logSeq += 1;
+    this.log.push({ type, message, seq: this.logSeq });
   }
 
   addPlayer(socketId, name, userId = null) {
@@ -131,7 +140,9 @@ export class GameRoom {
     this.turnOrder = shuffle(this.players.map((p) => p.id));
     this.turnIndex = 0;
     this.status = "playing";
-    this.log = [{ type: "system", message: "The game has begun. Good luck, detectives." }];
+    this.log = [];
+    this.logSeq = 0;
+    this.pushLog("system", "The game has begun. Good luck, detectives.");
     this.winnerId = null;
     this.turnState = { diceValue: null, hasMoved: false, hasSuggested: false };
     this.pendingSuggestion = null;
@@ -171,7 +182,7 @@ export class GameRoom {
     });
     if (active.length > 0) return false;
     this.status = "finished";
-    this.log.push({ type: "system", message: "All detectives were wrong. The culprit escapes." });
+    this.pushLog("system", "All detectives were wrong. The culprit escapes.");
     return true;
   }
 
@@ -192,7 +203,7 @@ export class GameRoom {
     if (this.turnState.diceValue != null) throw new Error("You've already rolled this turn");
     const value = 1 + Math.floor(Math.random() * 12);
     this.turnState.diceValue = value;
-    this.log.push({ type: "system", message: `${player.name} rolled a ${value}.` });
+    this.pushLog("system", `${player.name} rolled a ${value}.`);
     return value;
   }
 
@@ -270,12 +281,12 @@ export class GameRoom {
     if (target?.room) {
       if (!reachable.rooms.includes(target.room)) throw new Error(`You can't reach the ${target.room} this turn`);
       player.position = { room: target.room, cell: null };
-      this.log.push({ type: "move", message: `${player.name} entered the ${target.room}.` });
+      this.pushLog("move", `${player.name} entered the ${target.room}.`);
     } else if (target?.cell) {
       const ok = reachable.cells.some((c) => c.r === target.cell.r && c.c === target.cell.c);
       if (!ok) throw new Error("You can't reach that square this turn");
       player.position = { room: null, cell: { r: target.cell.r, c: target.cell.c } };
-      this.log.push({ type: "move", message: `${player.name} moved down the hall.` });
+      this.pushLog("move", `${player.name} moved down the hall.`);
     } else {
       throw new Error("No destination given");
     }
@@ -295,7 +306,7 @@ export class GameRoom {
     if (!destination) throw new Error("There's no secret passage here");
     player.position = { room: destination, cell: null };
     this.turnState.hasMoved = true;
-    this.log.push({ type: "move", message: `${player.name} slipped through the secret passage into the ${destination}.` });
+    this.pushLog("move", `${player.name} slipped through the secret passage into the ${destination}.`);
     return player;
   }
 
@@ -330,10 +341,7 @@ export class GameRoom {
 
     this.pendingSuggestion = { by: playerId, suggestion: { suspect, weapon, room }, responderOrder, index: 0 };
     this.lastSuggestion = { by: playerId, byName: player.name, suggestion: { suspect, weapon, room }, responses: {} };
-    this.log.push({
-      type: "suggestion",
-      message: `${player.name} suggested it was ${suspect}, with the ${weapon}, in the ${room}. Going round the table...`,
-    });
+    this.pushLog("suggestion", `${player.name} suggested it was ${suspect}, with the ${weapon}, in the ${room}. Going round the table...`);
 
     // Skip past anyone who's disconnected (they can't show a card).
     return this.autoAdvanceSuggestion();
@@ -346,13 +354,13 @@ export class GameRoom {
     while (pending.index < pending.responderOrder.length) {
       const responder = this.players.find((p) => p.id === pending.responderOrder[pending.index]);
       if (responder && responder.connected) return {};
-      this.log.push({ type: "system", message: `${responder?.name || "A player"} is away and was skipped.` });
+      this.pushLog("system", `${responder?.name || "A player"} is away and was skipped.`);
       if (responder && this.lastSuggestion) this.lastSuggestion.responses[responder.id] = "skip";
       pending.index += 1;
     }
     // Nobody could disprove.
     const suggesterId = pending.by;
-    this.log.push({ type: "system", message: "No one could disprove that suggestion!" });
+    this.pushLog("system", "No one could disprove that suggestion!");
     this.pendingSuggestion = null;
     // Turn stays with the suggester — they may now accuse or end their turn.
     return { privateReveal: { suggesterId, shownCard: null } };
@@ -372,7 +380,7 @@ export class GameRoom {
       const card = matches.find((c) => c.value === cardValue);
       if (!card) throw new Error("You don't hold that card");
       const suggester = this.players.find((p) => p.id === pending.by);
-      this.log.push({ type: "system", message: `${responder.name} disproved the suggestion by showing a card to ${suggester.name}.` });
+      this.pushLog("system", `${responder.name} disproved the suggestion by showing a card to ${suggester.name}.`);
       if (this.lastSuggestion) this.lastSuggestion.responses[playerId] = "show";
       if (suggester) suggester.timesShown += 1;
       const reveal = { suggesterId: pending.by, shownCard: { type: card.type, value: card.value }, byName: responder.name };
@@ -383,7 +391,7 @@ export class GameRoom {
 
     // action === "pass"
     if (matches.length > 0) throw new Error("You hold one of these cards — you must show one");
-    this.log.push({ type: "system", message: `${responder.name} has none of those cards.` });
+    this.pushLog("system", `${responder.name} has none of those cards.`);
     if (this.lastSuggestion) this.lastSuggestion.responses[playerId] = "pass";
     pending.index += 1;
     return this.autoAdvanceSuggestion();
@@ -419,17 +427,11 @@ export class GameRoom {
       };
       this.status = "finished";
       this.winnerId = playerId;
-      this.log.push({
-        type: "accusation",
-        message: `${player.name} accused ${suspect} with the ${weapon} in the ${room} — and was RIGHT! Case closed.`,
-      });
+      this.pushLog("accusation", `${player.name} accused ${suspect} with the ${weapon} in the ${room} — and was RIGHT! Case closed.`);
     } else {
       player.eliminated = true;
       if (!this.wrongAccusers.includes(playerId)) this.wrongAccusers.push(playerId);
-      this.log.push({
-        type: "accusation",
-        message: `${player.name} accused ${suspect} with the ${weapon} in the ${room} — and was WRONG. They're out of the running but must still disprove suggestions.`,
-      });
+      this.pushLog("accusation", `${player.name} accused ${suspect} with the ${weapon} in the ${room} — and was WRONG. They're out of the running but must still disprove suggestions.`);
       // Only advance the turn if it was actually their turn — an
       // out-of-turn accusation (anytime-accusation house rule) shouldn't
       // cut short whoever's turn it currently is, it just eliminates them.

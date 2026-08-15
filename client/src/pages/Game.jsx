@@ -214,7 +214,7 @@ export default function Game({ code, playerId, state, onLeave }) {
   const mustRespond = pending && pending.currentResponderId === playerId;
 
   // Playful nag: only about the very start of a turn — if the current
-  // player hasn't rolled the dice within 7s. Fires once per turn (not
+  // player hasn't rolled the dice within 15s. Fires once per turn (not
   // repeatedly), stays off once they roll, and a dismiss silences it for
   // the rest of that turn instead of it popping back up again.
   const [showNag, setShowNag] = useState(false);
@@ -232,14 +232,22 @@ export default function Game({ code, playerId, state, onLeave }) {
     const t = setTimeout(() => {
       setShowNag(true);
       sfx.siren();
-    }, 7000);
+    }, 15000);
     return () => clearTimeout(t);
   }, [state.status, state.currentPlayerId, turnState.diceValue, pending, nagDismissed]);
 
   const [soundOn, setSoundOn] = useState(soundEnabled());
 
   // Play sound cues on the meaningful state transitions.
-  const prev = useRef({ dice: null, turn: null, respCount: 0, finished: false, lastLogMessage: null });
+  // Log entries commonly repeat verbatim (e.g. "X moved down the hall."
+  // fires every corridor step), so anchoring on message *text* is unreliable
+  // — a duplicate could match an old entry and replay its sound. Anchor on
+  // each entry's monotonic `seq` instead. Lazily seed from mount-time state
+  // so a player present from the start doesn't get every log entry replayed
+  // as "new" on the very first render, while someone rejoining mid-game
+  // still treats already-existing entries as old news.
+  const lastSeenLogSeq = useRef(state.log.length ? state.log[state.log.length - 1].seq : 0);
+  const prev = useRef({ dice: null, turn: null, respCount: 0, finished: false });
   useEffect(() => {
     const p = prev.current;
     if (turnState.diceValue != null && p.dice == null) sfx.dice();
@@ -252,22 +260,18 @@ export default function Game({ code, playerId, state, onLeave }) {
       else if (latest === "pass") sfx.pass();
     }
     // A wrong accusation is public (it's in everyone's log) — play a random
-    // laugh clip for the whole table, not just whoever guessed wrong. The
-    // server only keeps the last 50 log entries, so anchor on the last
-    // message we'd already seen rather than raw array length (which can
-    // stop growing once the log is capped, hiding later entries).
-    const anchorIdx = p.lastLogMessage ? state.log.findIndex((e) => e.message === p.lastLogMessage) : -1;
-    const newEntries = anchorIdx >= 0 ? state.log.slice(anchorIdx + 1) : state.log.slice(-3);
-    if (p.lastLogMessage !== null && newEntries.some((e) => e.type === "accusation" && /WRONG/.test(e.message))) {
+    // laugh clip for the whole table, not just whoever guessed wrong.
+    const newEntries = state.log.filter((e) => e.seq > lastSeenLogSeq.current);
+    if (newEntries.some((e) => e.type === "accusation" && /WRONG/.test(e.message))) {
       sfx.wrongAccusation();
     }
+    if (state.log.length) lastSeenLogSeq.current = state.log[state.log.length - 1].seq;
     if (state.status === "finished" && !p.finished) sfx.win();
     prev.current = {
       dice: turnState.diceValue,
       turn: state.currentPlayerId,
       respCount: values.length,
       finished: state.status === "finished",
-      lastLogMessage: state.log.length ? state.log[state.log.length - 1].message : p.lastLogMessage,
     };
   }, [turnState.diceValue, state.currentPlayerId, state.lastSuggestion, state.status, state.log, playerId, pending]);
 
@@ -298,7 +302,7 @@ export default function Game({ code, playerId, state, onLeave }) {
       effectTimer = setTimeout(() => setShowConfetti(false), 2000);
     } else {
       setBoardShaking(true);
-      effectTimer = setTimeout(() => setBoardShaking(false), 400);
+      effectTimer = setTimeout(() => setBoardShaking(false), 600);
     }
     return () => {
       clearTimeout(zoomTimer);
@@ -431,6 +435,7 @@ export default function Game({ code, playerId, state, onLeave }) {
             zoomOrigin={zoomOrigin}
           />
           {showConfetti && <Confetti />}
+          {boardShaking && <div className="wrong-flash" />}
         </div>
 
         <div className="controls-bar">
