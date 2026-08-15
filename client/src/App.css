@@ -664,11 +664,11 @@ button.secondary {
 }
 
 .confetti-layer {
-  position: absolute;
+  position: fixed;
   inset: 0;
   overflow: hidden;
   pointer-events: none;
-  z-index: 20;
+  z-index: 500;
 }
 
 .confetti-piece {

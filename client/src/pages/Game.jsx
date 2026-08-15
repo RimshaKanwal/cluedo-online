@@ -356,8 +356,16 @@ export default function Game({ code, playerId, state, onLeave }) {
   }
 
   if (state.status === "finished") {
+    // A correct accusation flips status to "finished" in the very same
+    // broadcast that carries the winning lastAccusation — so this branch is
+    // reached before the confetti effect below ever gets to render inside
+    // the (now-unmounted) board. Render it here instead, as a viewport-fixed
+    // overlay independent of the board.
     return (
-      <FinishedScreen code={code} playerId={playerId} state={state} onLeave={onLeave} />
+      <>
+        <FinishedScreen code={code} playerId={playerId} state={state} onLeave={onLeave} />
+        {showConfetti && <Confetti />}
+      </>
     );
   }
 
@@ -434,7 +442,6 @@ export default function Game({ code, playerId, state, onLeave }) {
             zooming={!!zoomRoom}
             zoomOrigin={zoomOrigin}
           />
-          {showConfetti && <Confetti />}
           {boardShaking && <div className="wrong-flash" />}
         </div>
 
