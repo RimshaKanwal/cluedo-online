@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { socket } from "../socket";
-import Notepad, { NOTEPAD_STORAGE_KEY } from "../components/Notepad";
+import Notepad, { notepadStorageKey } from "../components/Notepad";
 import NotesReveal from "../components/NotesReveal";
 import { sfx, soundEnabled, toggleSound } from "../sound";
 
@@ -214,7 +214,7 @@ export default function Game({ code, playerId, state, onLeave }) {
   const mustRespond = pending && pending.currentResponderId === playerId;
 
   // Playful nag: only about the very start of a turn — if the current
-  // player hasn't rolled the dice within 15s. Fires once per turn (not
+  // player hasn't rolled the dice within 20s. Fires once per turn (not
   // repeatedly), stays off once they roll, and a dismiss silences it for
   // the rest of that turn instead of it popping back up again.
   const [showNag, setShowNag] = useState(false);
@@ -232,7 +232,7 @@ export default function Game({ code, playerId, state, onLeave }) {
     const t = setTimeout(() => {
       setShowNag(true);
       sfx.siren();
-    }, 15000);
+    }, 20000);
     return () => clearTimeout(t);
   }, [state.status, state.currentPlayerId, turnState.diceValue, pending, nagDismissed]);
 
@@ -532,7 +532,7 @@ export default function Game({ code, playerId, state, onLeave }) {
         </div>
         <div className="drawer-body">
           {tab === "notes" ? (
-            <Notepad cardSets={state.cardSets} players={orderedPlayers} selfId={playerId} />
+            <Notepad cardSets={state.cardSets} players={orderedPlayers} selfId={playerId} code={code} />
           ) : (
             <GameLog log={state.log} />
           )}
@@ -938,7 +938,7 @@ function FinishedScreen({ code, playerId, state, onLeave }) {
     submittedRef.current = true;
     let marks = {};
     try {
-      marks = JSON.parse(localStorage.getItem(NOTEPAD_STORAGE_KEY) || "{}");
+      marks = JSON.parse(localStorage.getItem(notepadStorageKey(code)) || "{}");
     } catch {
       marks = {};
     }

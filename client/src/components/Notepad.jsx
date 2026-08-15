@@ -1,24 +1,38 @@
 import { useEffect, useState } from "react";
 
-export const NOTEPAD_STORAGE_KEY = "cluedo-notepad";
+// Scoped per room code so a new game starts with a blank sheet instead of
+// carrying over the previous game's markings — it was a single fixed key
+// before, so every game shared (and polluted) the same notes forever.
+export function notepadStorageKey(code) {
+  return `cluedo-notepad-${code}`;
+}
 export const NOTEPAD_GLYPH = { x: "✕", check: "✓", "?": "?" };
 const MARKS = [undefined, "x", "check", "?"]; // click cycles through these
 
 // Detective sheet: rows are the cards (suspects, weapons, rooms), columns are
 // the players. Mark each cell as you deduce who holds a card, and click a card
 // name to cross the whole card off (ruled out) or star it (in the envelope).
-export default function Notepad({ cardSets, players, selfId }) {
+export default function Notepad({ cardSets, players, selfId, code }) {
+  const storageKey = notepadStorageKey(code);
   const [marks, setMarks] = useState(() => {
     try {
-      return JSON.parse(localStorage.getItem(NOTEPAD_STORAGE_KEY) || "{}");
+      return JSON.parse(localStorage.getItem(storageKey) || "{}");
     } catch {
       return {};
     }
   });
 
   useEffect(() => {
-    localStorage.setItem(NOTEPAD_STORAGE_KEY, JSON.stringify(marks));
-  }, [marks]);
+    try {
+      setMarks(JSON.parse(localStorage.getItem(storageKey) || "{}"));
+    } catch {
+      setMarks({});
+    }
+  }, [storageKey]);
+
+  useEffect(() => {
+    localStorage.setItem(storageKey, JSON.stringify(marks));
+  }, [marks, storageKey]);
 
   function cycle(key) {
     setMarks((prev) => {
