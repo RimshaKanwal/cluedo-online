@@ -45,6 +45,10 @@ function noise(start, dur, gain = 0.06) {
   src.start(t0);
 }
 
+// Real audio clips (not synthesized) — one plays at random whenever
+// someone's accusation turns out wrong.
+const WRONG_ACCUSATION_CLIPS = ["/sounds/wrong-laugh-1.mp3", "/sounds/wrong-laugh-2.mp3", "/sounds/wrong-laugh-3.mp3"];
+
 export const sfx = {
   dice() {
     if (!enabled) return;
@@ -82,6 +86,13 @@ export const sfx = {
       beep(700, i * 0.3, 0.15, { type: "square", gain: 0.06 });
       beep(1000, i * 0.3 + 0.15, 0.15, { type: "square", gain: 0.06 });
     }
+  },
+  wrongAccusation() {
+    if (!enabled) return;
+    const clip = WRONG_ACCUSATION_CLIPS[Math.floor(Math.random() * WRONG_ACCUSATION_CLIPS.length)];
+    const audio = new Audio(clip);
+    audio.volume = 0.6;
+    audio.play().catch(() => {}); // ignore autoplay-policy rejections
   },
 };
 
