@@ -48,6 +48,13 @@ function noise(start, dur, gain = 0.06) {
 // Real audio clips (not synthesized) — one plays at random whenever
 // someone's accusation turns out wrong.
 const WRONG_ACCUSATION_CLIPS = ["/sounds/wrong-laugh-1.mp3", "/sounds/wrong-laugh-2.mp3", "/sounds/wrong-laugh-3.mp3"];
+const WIN_CLIP = "/sounds/anime-wow.mp3";
+
+function playClip(src, volume = 0.6) {
+  const audio = new Audio(src);
+  audio.volume = volume;
+  audio.play().catch(() => {}); // ignore autoplay-policy rejections
+}
 
 export const sfx = {
   dice() {
@@ -78,6 +85,7 @@ export const sfx = {
   win() {
     if (!enabled) return;
     [523, 659, 784, 1047].forEach((f, i) => beep(f, i * 0.12, 0.18, { gain: 0.09 }));
+    setTimeout(() => playClip(WIN_CLIP, 0.7), 480); // right after the little fanfare
   },
   // Playful two-tone alarm sweep for the "your turn" nag popup.
   siren() {
@@ -90,9 +98,7 @@ export const sfx = {
   wrongAccusation() {
     if (!enabled) return;
     const clip = WRONG_ACCUSATION_CLIPS[Math.floor(Math.random() * WRONG_ACCUSATION_CLIPS.length)];
-    const audio = new Audio(clip);
-    audio.volume = 0.6;
-    audio.play().catch(() => {}); // ignore autoplay-policy rejections
+    playClip(clip);
   },
 };
 
