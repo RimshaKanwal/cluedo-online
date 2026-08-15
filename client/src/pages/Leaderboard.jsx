@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { fetchLeaderboard, fetchMenace } from "../auth";
-import { titleFor } from "../titles";
+import { titleFor, TITLE_LADDER } from "../titles";
 
 export default function Leaderboard({ onBack }) {
   const [rows, setRows] = useState(null);
@@ -21,6 +21,14 @@ export default function Leaderboard({ onBack }) {
       <div className="leaderboard-header">
         <h2>🏆 Leaderboard</h2>
         <button className="secondary" onClick={onBack}>Back</button>
+      </div>
+
+      <div className="title-legend">
+        {[...TITLE_LADDER].reverse().map((t) => (
+          <span key={t.title} className="title-legend-item">
+            <span className="leaderboard-title">{t.title}</span> {t.minWins}+ wins
+          </span>
+        ))}
       </div>
 
       {menace && (
