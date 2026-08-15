@@ -120,6 +120,14 @@ body {
   color: #ff8a3d;
 }
 
+.leaderboard-title {
+  color: var(--gold);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
 .account-badges {
   display: flex;
   gap: 3px;

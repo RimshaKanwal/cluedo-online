@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { fetchLeaderboard, fetchMenace } from "../auth";
+import { titleFor } from "../titles";
 
 export default function Leaderboard({ onBack }) {
   const [rows, setRows] = useState(null);
@@ -38,6 +39,7 @@ export default function Leaderboard({ onBack }) {
             <tr>
               <th>#</th>
               <th>Player</th>
+              <th>Title</th>
               <th>Wins</th>
               <th>Win %</th>
               <th>Games</th>
@@ -49,6 +51,7 @@ export default function Leaderboard({ onBack }) {
               <tr key={r.username}>
                 <td>{i + 1}</td>
                 <td>{r.username}</td>
+                <td><span className="leaderboard-title">{titleFor(r.wins)}</span></td>
                 <td>{r.wins}</td>
                 <td>{Math.round(r.winRate * 100)}%</td>
                 <td>{r.gamesPlayed}</td>
