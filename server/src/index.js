@@ -109,10 +109,10 @@ function leavePreviousRoom(socket) {
 }
 
 io.on("connection", (socket) => {
-  socket.on("createGame", ({ maxPlayers }) => {
+  socket.on("createGame", ({ maxPlayers, allowAnytimeAccusation }) => {
     wrap(socket, () => {
       leavePreviousRoom(socket);
-      const room = manager.createRoom(maxPlayers);
+      const room = manager.createRoom(maxPlayers, { allowAnytimeAccusation });
       const player = room.addPlayer(socket.id, socket.data.user.username, socket.data.user.userId);
       socket.join(room.code);
       socket.data.code = room.code;

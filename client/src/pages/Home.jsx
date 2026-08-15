@@ -13,11 +13,12 @@ export default function Home({ onShowLeaderboard }) {
   const initialJoinCode = codeFromJoinLink();
   const [mode, setMode] = useState(initialJoinCode ? "join" : "create"); // create | join
   const [maxPlayers, setMaxPlayers] = useState(6);
+  const [allowAnytimeAccusation, setAllowAnytimeAccusation] = useState(false);
   const [joinCode, setJoinCode] = useState(initialJoinCode);
 
   function handleCreate(e) {
     e.preventDefault();
-    socket.emit("createGame", { maxPlayers });
+    socket.emit("createGame", { maxPlayers, allowAnytimeAccusation });
   }
 
   function handleJoin(e) {
@@ -56,6 +57,20 @@ export default function Home({ onShowLeaderboard }) {
             {maxPlayers > 6
               ? "7-8 players uses an expanded set of suspects & weapons so everyone gets enough cards."
               : "Classic set: 6 suspects, 6 weapons, 9 rooms."}
+          </p>
+
+          <label className="checkbox-row">
+            <input
+              type="checkbox"
+              checked={allowAnytimeAccusation}
+              onChange={(e) => setAllowAnytimeAccusation(e.target.checked)}
+            />
+            Allow accusing at any time (not just on your turn)
+          </label>
+          <p className="hint">
+            {allowAnytimeAccusation
+              ? "Anyone can jump in with an accusation whenever they like — high stakes, keep your guard up."
+              : "Classic rule: you can only accuse during your own turn."}
           </p>
 
           <button type="submit" className="primary">Create Room</button>

@@ -8,12 +8,12 @@ export class GameManager {
     this.rooms = new Map(); // code -> GameRoom
   }
 
-  createRoom(maxPlayers) {
+  createRoom(maxPlayers, options = {}) {
     let code;
     do {
       code = nanoid();
     } while (this.rooms.has(code));
-    const room = new GameRoom(code, maxPlayers);
+    const room = new GameRoom(code, maxPlayers, options);
     this.rooms.set(code, room);
     return room;
   }

@@ -287,6 +287,10 @@ export default function Game({ code, playerId, state, onLeave }) {
   );
 
   const myActive = isMyTurn && !self.eliminated;
+  // House rule: with allowAnytimeAccusation on, anyone can accuse whenever
+  // it's not blocked by other things (eliminated, mid-suggestion-answer,
+  // game over) — not just on their own turn.
+  const canAccuseAnytime = state.allowAnytimeAccusation && !self.eliminated && !pending && state.status === "playing";
 
   return (
     <div className="game-screen">
@@ -345,20 +349,33 @@ export default function Game({ code, playerId, state, onLeave }) {
               <button className="cb-btn passage" onClick={usePassage}><span className="cb-ico">🚪</span>Passage <small>→ {passageTo}</small></button>
             )}
             {myActive && !pending && (
-              <>
-                <button
-                  className="cb-btn suggest"
-                  onClick={() => setSuggestOpen(true)}
-                  disabled={!self.position.room || turnState.hasSuggested}
-                  title={turnState.hasSuggested ? "Already suggested this turn" : !self.position.room ? "Be in a room to suggest" : ""}
-                >
-                  <span className="cb-ico">🔍</span>Suggest
-                </button>
-                <button className="cb-btn accuse" onClick={() => setAccuseOpen(true)} disabled={!self.position.room} title={!self.position.room ? "Be in a room to accuse" : ""}>
-                  <span className="cb-ico">⚖️</span>Accuse
-                </button>
-                <button className="cb-btn end" onClick={endTurn}><span className="cb-ico">🏳️</span>End Turn</button>
-              </>
+              <button
+                className="cb-btn suggest"
+                onClick={() => setSuggestOpen(true)}
+                disabled={!self.position.room || turnState.hasSuggested}
+                title={turnState.hasSuggested ? "Already suggested this turn" : !self.position.room ? "Be in a room to suggest" : ""}
+              >
+                <span className="cb-ico">🔍</span>Suggest
+              </button>
+            )}
+            {(myActive || canAccuseAnytime) && !pending && (
+              <button
+                className="cb-btn accuse"
+                onClick={() => setAccuseOpen(true)}
+                disabled={!self.position.room}
+                title={
+                  !self.position.room
+                    ? "Be in a room to accuse"
+                    : !myActive && canAccuseAnytime
+                    ? "Anytime-accusation is on for this game — you don't need to wait for your turn"
+                    : ""
+                }
+              >
+                <span className="cb-ico">⚖️</span>Accuse{!myActive && canAccuseAnytime && <small> (anytime)</small>}
+              </button>
+            )}
+            {myActive && !pending && (
+              <button className="cb-btn end" onClick={endTurn}><span className="cb-ico">🏳️</span>End Turn</button>
             )}
             <button className="sound-toggle" title={soundOn ? "Mute sounds" : "Unmute sounds"} onClick={() => setSoundOn(toggleSound())}>
               {soundOn ? "🔊" : "🔇"}

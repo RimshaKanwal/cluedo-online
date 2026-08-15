@@ -10,9 +10,13 @@ function shuffle(arr) {
 }
 
 export class GameRoom {
-  constructor(code, maxPlayers) {
+  constructor(code, maxPlayers, options = {}) {
     this.code = code;
     this.maxPlayers = Math.min(Math.max(maxPlayers, MIN_PLAYERS), MAX_PLAYERS);
+    // House rule chosen at creation: if set, anyone (not just the current
+    // player) can fire off an accusation whenever they like, not just on
+    // their own turn. Fixed for the room's whole lifetime.
+    this.allowAnytimeAccusation = !!options.allowAnytimeAccusation;
     this.players = []; // {id, socketId, name, character, cards, position, isHost, eliminated, connected}
     this.status = "lobby"; // lobby | playing | finished
     this.solution = null;
@@ -139,16 +143,22 @@ export class GameRoom {
     return player;
   }
 
-  advanceTurn() {
+  // True (and ends the game) if every player is eliminated. Shared by
+  // advanceTurn and by out-of-turn accusations, which can eliminate the
+  // last active player without otherwise touching whose turn it is.
+  checkAllEliminated() {
     const active = this.turnOrder.filter((id) => {
       const p = this.players.find((pl) => pl.id === id);
       return p && !p.eliminated;
     });
-    if (active.length === 0) {
-      this.status = "finished";
-      this.log.push({ type: "system", message: "All detectives were wrong. The culprit escapes." });
-      return;
-    }
+    if (active.length > 0) return false;
+    this.status = "finished";
+    this.log.push({ type: "system", message: "All detectives were wrong. The culprit escapes." });
+    return true;
+  }
+
+  advanceTurn() {
+    if (this.checkAllEliminated()) return;
     for (let i = 0; i < this.turnOrder.length; i++) {
       this.turnIndex = (this.turnIndex + 1) % this.turnOrder.length;
       const p = this.players.find((pl) => pl.id === this.currentPlayerId);
@@ -359,9 +369,16 @@ export class GameRoom {
   }
 
   makeAccusation(playerId, { suspect, weapon, room }) {
-    const player = this.assertTurn(playerId);
+    if (this.status !== "playing") throw new Error("Game is not in progress");
+    const player = this.players.find((p) => p.id === playerId);
+    if (!player) throw new Error("Unknown player");
+    if (player.eliminated) throw new Error("You have been eliminated and can only respond to suggestions");
+
+    const isMyTurn = this.currentPlayerId === playerId;
+    if (!isMyTurn && !this.allowAnytimeAccusation) throw new Error("It is not your turn");
     if (this.pendingSuggestion) throw new Error("Finish answering the current suggestion first");
     if (!player.position.room) throw new Error("You must be in a room to make an accusation");
+
     const correct =
       this.solution.suspect === suspect &&
       this.solution.weapon === weapon &&
@@ -380,7 +397,11 @@ export class GameRoom {
         type: "accusation",
         message: `${player.name} accused ${suspect} with the ${weapon} in the ${room} — and was WRONG. They're out of the running but must still disprove suggestions.`,
       });
-      this.advanceTurn();
+      // Only advance the turn if it was actually their turn — an
+      // out-of-turn accusation (anytime-accusation house rule) shouldn't
+      // cut short whoever's turn it currently is, it just eliminates them.
+      if (isMyTurn) this.advanceTurn();
+      else this.checkAllEliminated();
     }
 
     return { correct, solution: this.status === "finished" ? this.solution : null };
@@ -447,6 +468,7 @@ export class GameRoom {
       status: this.status,
       maxPlayers: this.maxPlayers,
       minPlayers: MIN_PLAYERS,
+      allowAnytimeAccusation: this.allowAnytimeAccusation,
       players: this.players.map((p) => ({
         id: p.id,
         name: p.name,

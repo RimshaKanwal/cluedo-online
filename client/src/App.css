@@ -205,6 +205,19 @@ body {
   font-weight: 600;
 }
 
+.checkbox-row {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 8px !important;
+  cursor: pointer;
+}
+
+.checkbox-row input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--gold);
+}
+
 .form input, .form select {
   padding: 10px 12px;
   border-radius: 8px;
