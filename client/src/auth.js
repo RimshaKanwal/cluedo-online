@@ -40,3 +40,9 @@ export async function fetchLeaderboard() {
   if (!res.ok) throw new Error("Could not load leaderboard");
   return res.json();
 }
+
+export async function fetchMenace() {
+  const res = await fetch(`${SERVER_URL}/api/menace`);
+  if (!res.ok) throw new Error("Could not load menace");
+  return res.json(); // { username, wrongAccusations } | null
+}

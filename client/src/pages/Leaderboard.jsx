@@ -1,14 +1,18 @@
 import { useEffect, useState } from "react";
-import { fetchLeaderboard } from "../auth";
+import { fetchLeaderboard, fetchMenace } from "../auth";
 
 export default function Leaderboard({ onBack }) {
   const [rows, setRows] = useState(null);
+  const [menace, setMenace] = useState(null);
   const [error, setError] = useState(null);
 
   useEffect(() => {
     fetchLeaderboard()
       .then(setRows)
       .catch((err) => setError(err.message));
+    fetchMenace()
+      .then(setMenace)
+      .catch(() => {}); // non-critical, just skip the callout if it fails
   }, []);
 
   return (
@@ -17,6 +21,12 @@ export default function Leaderboard({ onBack }) {
         <h2>🏆 Leaderboard</h2>
         <button className="secondary" onClick={onBack}>Back</button>
       </div>
+
+      {menace && (
+        <div className="menace-callout" title={`${menace.username} has the most wrong accusations all-time`}>
+          😈 <strong>Menace:</strong> {menace.username} ({menace.wrongAccusations} wrong guess{menace.wrongAccusations === 1 ? "" : "es"})
+        </div>
+      )}
 
       {error && <p className="hint" style={{ color: "#ff8a80" }}>{error}</p>}
       {!rows && !error && <p className="hint">Loading…</p>}
@@ -31,6 +41,7 @@ export default function Leaderboard({ onBack }) {
               <th>Wins</th>
               <th>Win %</th>
               <th>Games</th>
+              <th>Streak</th>
             </tr>
           </thead>
           <tbody>
@@ -41,6 +52,9 @@ export default function Leaderboard({ onBack }) {
                 <td>{r.wins}</td>
                 <td>{Math.round(r.winRate * 100)}%</td>
                 <td>{r.gamesPlayed}</td>
+                <td>
+                  {r.currentStreak > 1 ? `🔥${r.currentStreak}` : r.bestStreak > 1 ? <span className="hint">best {r.bestStreak}</span> : "—"}
+                </td>
               </tr>
             ))}
           </tbody>

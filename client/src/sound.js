@@ -100,6 +100,13 @@ export const sfx = {
     const clip = WRONG_ACCUSATION_CLIPS[Math.floor(Math.random() * WRONG_ACCUSATION_CLIPS.length)];
     playClip(clip);
   },
+  // Three rising ticks timed to a 3-2-1 "final answer" countdown, then a
+  // sharper "locked in" click.
+  suspense() {
+    if (!enabled) return;
+    [420, 500, 600].forEach((f, i) => beep(f, i * 0.9, 0.12, { type: "square", gain: 0.05 }));
+    beep(900, 2.7, 0.12, { type: "square", gain: 0.07 });
+  },
 };
 
 export function soundEnabled() {

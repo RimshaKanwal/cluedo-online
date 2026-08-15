@@ -5,7 +5,9 @@ import { Server } from "socket.io";
 import { GameManager } from "./game/gameManager.js";
 import { MIN_PLAYERS, MAX_PLAYERS } from "./game/constants.js";
 import { initSchema } from "./db.js";
-import { registerOrLogin, verifyToken, getUserById, getLeaderboard, recordGameResult } from "./auth.js";
+import { registerOrLogin, verifyToken, getUserById, getLeaderboard, getMenace, recordGameResult } from "./auth.js";
+
+const REACTION_EMOJI = ["😏 Suspicious...", "🤔 Hmm", "😱 No way!", "😂 lol", "🎯 Got you!", "😤 Ugh"];
 
 const PORT = process.env.PORT || 4000;
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || "http://localhost:5173";
@@ -40,6 +42,14 @@ app.get("/api/leaderboard", async (_req, res) => {
     res.json(await getLeaderboard());
   } catch (err) {
     res.status(500).json({ error: err.message || "Could not load leaderboard" });
+  }
+});
+
+app.get("/api/menace", async (_req, res) => {
+  try {
+    res.json(await getMenace());
+  } catch (err) {
+    res.status(500).json({ error: err.message || "Could not load menace" });
   }
 });
 
@@ -256,10 +266,15 @@ io.on("connection", (socket) => {
       if (gameRoom.status === "finished" && !gameRoom.resultRecorded) {
         gameRoom.resultRecorded = true;
         const winnerPlayer = gameRoom.players.find((p) => p.id === gameRoom.winnerId);
-        const playerUserIds = gameRoom.players.map((p) => p.userId).filter(Boolean);
-        recordGameResult(playerUserIds, winnerPlayer?.userId ?? null).catch((err) => {
-          console.error("Failed to record game result:", err.message);
-        });
+        const participantUserIds = gameRoom.players.map((p) => p.userId).filter(Boolean);
+        const wrongUserIds = gameRoom.wrongAccusers
+          .map((playerId) => gameRoom.players.find((p) => p.id === playerId)?.userId)
+          .filter(Boolean);
+        recordGameResult(participantUserIds, wrongUserIds, winnerPlayer?.userId ?? null, result?.achievements || {}).catch(
+          (err) => {
+            console.error("Failed to record game result:", err.message);
+          }
+        );
       }
     });
   });
@@ -270,6 +285,20 @@ io.on("connection", (socket) => {
       if (!gameRoom) throw new Error("Room not found");
       gameRoom.endTurn(playerId);
       broadcastState(code);
+    });
+  });
+
+  // Purely transient — not stored in GameRoom state or persisted, just
+  // relayed live to everyone currently in the room (sender included, so
+  // one render code path handles showing your own bubble too).
+  socket.on("sendReaction", ({ code, playerId, emoji }) => {
+    wrap(socket, () => {
+      const gameRoom = manager.getRoom(code);
+      if (!gameRoom) throw new Error("Room not found");
+      if (!REACTION_EMOJI.includes(emoji)) throw new Error("Not a valid reaction");
+      const player = gameRoom.players.find((p) => p.id === playerId);
+      if (!player) throw new Error("Unknown player");
+      io.to(code).emit("reaction", { playerId, emoji });
     });
   });
 

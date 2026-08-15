@@ -11,6 +11,12 @@ function toPublicUser(row) {
     username: row.display_name,
     wins: row.wins,
     gamesPlayed: row.games_played,
+    currentStreak: row.current_streak,
+    bestStreak: row.best_streak,
+    wrongAccusations: row.wrong_accusations,
+    sherlockCount: row.sherlock_count,
+    untouchableCount: row.untouchable_count,
+    comebackCount: row.comeback_count,
   };
 }
 
@@ -61,7 +67,7 @@ export async function getUserById(userId) {
 
 export async function getLeaderboard(limit = 50) {
   const res = await pool.query(
-    `SELECT display_name, wins, games_played
+    `SELECT display_name, wins, games_played, current_streak, best_streak
      FROM users
      WHERE games_played > 0
      ORDER BY wins DESC, (wins::float / GREATEST(games_played, 1)) DESC
@@ -73,21 +79,56 @@ export async function getLeaderboard(limit = 50) {
     wins: r.wins,
     gamesPlayed: r.games_played,
     winRate: r.games_played > 0 ? r.wins / r.games_played : 0,
+    currentStreak: r.current_streak,
+    bestStreak: r.best_streak,
   }));
 }
 
-// Called once per finished game: winnerId (nullable) gets a win, everyone
-// else (and the winner too) gets games_played incremented.
-export async function recordGameResult(playerUserIds, winnerUserId) {
+// Whoever currently holds the most all-time wrong accusations — a moving
+// "crown" rather than a per-game unlock, since a player can only go wrong
+// once per game before being eliminated.
+export async function getMenace() {
+  const res = await pool.query(
+    `SELECT display_name, wrong_accusations FROM users WHERE wrong_accusations > 0
+     ORDER BY wrong_accusations DESC LIMIT 1`
+  );
+  if (res.rows.length === 0) return null;
+  return { username: res.rows[0].display_name, wrongAccusations: res.rows[0].wrong_accusations };
+}
+
+// Called once per finished game.
+// - participantUserIds: everyone who played (games_played += 1 for all).
+// - wrongUserIds: subset who made a wrong accusation this game.
+// - winnerUserId: nullable — null means nobody solved it.
+// - winnerAchievements: { sherlock, untouchable, comeback } booleans, only
+//   meaningful when there's a winner.
+export async function recordGameResult(participantUserIds, wrongUserIds, winnerUserId, winnerAchievements = {}) {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    for (const userId of playerUserIds) {
+    for (const userId of participantUserIds) {
       if (userId === winnerUserId) {
-        await client.query("UPDATE users SET wins = wins + 1, games_played = games_played + 1 WHERE id = $1", [userId]);
+        await client.query(
+          `UPDATE users SET
+             wins = wins + 1,
+             games_played = games_played + 1,
+             current_streak = current_streak + 1,
+             best_streak = GREATEST(best_streak, current_streak + 1),
+             sherlock_count = sherlock_count + $2,
+             untouchable_count = untouchable_count + $3,
+             comeback_count = comeback_count + $4
+           WHERE id = $1`,
+          [userId, winnerAchievements.sherlock ? 1 : 0, winnerAchievements.untouchable ? 1 : 0, winnerAchievements.comeback ? 1 : 0]
+        );
       } else {
-        await client.query("UPDATE users SET games_played = games_played + 1 WHERE id = $1", [userId]);
+        await client.query(
+          "UPDATE users SET games_played = games_played + 1, current_streak = 0 WHERE id = $1",
+          [userId]
+        );
       }
+    }
+    for (const userId of wrongUserIds) {
+      await client.query("UPDATE users SET wrong_accusations = wrong_accusations + 1 WHERE id = $1", [userId]);
     }
     await client.query("COMMIT");
   } catch (err) {

@@ -36,6 +36,16 @@ export class GameRoom {
     // Guards against double-recording wins/games_played if the finish path
     // is somehow reached more than once.
     this.resultRecorded = false;
+    // Achievement/juice tracking.
+    this.turnCount = 0; // completed turns, for the "Sherlock" (fast win) badge
+    this.wrongAccusers = []; // playerIds who went wrong this game, for the Menace stat
+    // Public accusation outcome (unlike suggestions, there's no secret info
+    // here) — drives confetti/shake/camera-pan on the client. `seq` lets the
+    // client tell "a new accusation happened" apart from "the same one got
+    // re-sent in a later broadcast" (every socket message re-serializes this
+    // into a fresh object, so identity/content alone can't distinguish them).
+    this.lastAccusation = null;
+    this.accusationSeq = 0;
   }
 
   get playerCount() {
@@ -57,6 +67,8 @@ export class GameRoom {
       isHost: this.players.length === 0,
       eliminated: false,
       connected: true,
+      timesShown: 0, // how often someone else disproved THEIR suggestion this game
+      suggestionsMade: 0,
     };
     this.players.push(player);
     return player;
@@ -112,6 +124,8 @@ export class GameRoom {
       const start = this.board.startPositions[character];
       player.position = { room: null, cell: { r: start.r, c: start.c } };
       player.eliminated = false;
+      player.timesShown = 0;
+      player.suggestionsMade = 0;
     });
 
     this.turnOrder = shuffle(this.players.map((p) => p.id));
@@ -124,6 +138,10 @@ export class GameRoom {
     this.lastSuggestion = null;
     this.finalNotes = {};
     this.resultRecorded = false;
+    this.turnCount = 0;
+    this.wrongAccusers = [];
+    this.lastAccusation = null;
+    this.accusationSeq = 0;
   }
 
   get currentPlayerId() {
@@ -158,6 +176,7 @@ export class GameRoom {
   }
 
   advanceTurn() {
+    this.turnCount += 1;
     if (this.checkAllEliminated()) return;
     for (let i = 0; i < this.turnOrder.length; i++) {
       this.turnIndex = (this.turnIndex + 1) % this.turnOrder.length;
@@ -295,6 +314,7 @@ export class GameRoom {
     if (this.pendingSuggestion) throw new Error("A suggestion is already being answered");
     if (this.turnState.hasSuggested) throw new Error("You've already made a suggestion this turn");
     this.turnState.hasSuggested = true;
+    player.suggestionsMade += 1;
     // The suggested room must be where the suggesting player currently is.
     // (Note: classic Cluedo also teleports the accused suspect's own token
     // into that room — deliberately not done here.)
@@ -354,6 +374,7 @@ export class GameRoom {
       const suggester = this.players.find((p) => p.id === pending.by);
       this.log.push({ type: "system", message: `${responder.name} disproved the suggestion by showing a card to ${suggester.name}.` });
       if (this.lastSuggestion) this.lastSuggestion.responses[playerId] = "show";
+      if (suggester) suggester.timesShown += 1;
       const reveal = { suggesterId: pending.by, shownCard: { type: card.type, value: card.value }, byName: responder.name };
       this.pendingSuggestion = null;
       // Turn stays with the suggester — they may now accuse or end their turn.
@@ -384,7 +405,18 @@ export class GameRoom {
       this.solution.weapon === weapon &&
       this.solution.room === room;
 
+    let achievements = null;
+    this.accusationSeq += 1;
+    this.lastAccusation = { by: playerId, byName: player.name, suspect, weapon, room, correct, seq: this.accusationSeq };
+
     if (correct) {
+      // Snapshot achievement conditions before status flips to "finished" —
+      // they all read off state as it stood at the moment of the win.
+      achievements = {
+        sherlock: this.turnCount < 8,
+        untouchable: player.suggestionsMade > 0 && player.timesShown === 0,
+        comeback: this.players.every((p) => p.id === playerId || p.eliminated),
+      };
       this.status = "finished";
       this.winnerId = playerId;
       this.log.push({
@@ -393,6 +425,7 @@ export class GameRoom {
       });
     } else {
       player.eliminated = true;
+      if (!this.wrongAccusers.includes(playerId)) this.wrongAccusers.push(playerId);
       this.log.push({
         type: "accusation",
         message: `${player.name} accused ${suspect} with the ${weapon} in the ${room} — and was WRONG. They're out of the running but must still disprove suggestions.`,
@@ -404,7 +437,7 @@ export class GameRoom {
       else this.checkAllEliminated();
     }
 
-    return { correct, solution: this.status === "finished" ? this.solution : null };
+    return { correct, solution: this.status === "finished" ? this.solution : null, achievements };
   }
 
   endTurn(playerId) {
@@ -492,6 +525,7 @@ export class GameRoom {
       pendingSuggestion: this.status === "playing" ? this.pendingSuggestionFor(forPlayerId) : null,
       lastSuggestion: this.lastSuggestion,
       finalNotes: this.status === "finished" ? this.finalNotes : undefined,
+      lastAccusation: this.lastAccusation,
     };
   }
 }

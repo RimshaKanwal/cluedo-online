@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { socket, setAuthToken } from "./socket";
 import { getStoredToken, storeToken, clearToken, fetchMe } from "./auth";
+import { titleFor } from "./titles";
 import SignIn from "./pages/SignIn";
 import Home from "./pages/Home";
 import Lobby from "./pages/Lobby";
@@ -58,7 +59,8 @@ export default function App() {
 
   function handleSignedIn(data) {
     storeToken(data.token);
-    setAccount({ userId: data.userId, username: data.username, wins: data.wins, gamesPlayed: data.gamesPlayed });
+    const { token, ...account } = data;
+    setAccount(account);
     setAuthToken(data.token);
   }
 
@@ -139,6 +141,16 @@ export default function App() {
     };
   }, [resetToHome]);
 
+  // Refresh the signed-in account's stats once a game finishes, so the
+  // header chip's wins/streak/badges update without needing a reload.
+  const refreshedForRef = useRef(null);
+  useEffect(() => {
+    if (state?.status !== "finished" || refreshedForRef.current === code) return;
+    refreshedForRef.current = code;
+    const token = getStoredToken();
+    if (token) fetchMe(token).then(setAccount).catch(() => {});
+  }, [state?.status, code]);
+
   let content;
   if (checkingSession) {
     content = null;
@@ -162,7 +174,29 @@ export default function App() {
           {code && <span className="room-code-badge">Room: {code}</span>}
           {account && (
             <div className="account-chip">
-              <span>{account.username} · {account.wins}🏆</span>
+              <span className="account-chip-main">
+                {account.username} <span className="account-title">{titleFor(account.wins)}</span> · {account.wins}🏆
+                {account.currentStreak > 1 && <span className="account-streak"> 🔥{account.currentStreak}</span>}
+              </span>
+              {(account.sherlockCount > 0 || account.untouchableCount > 0 || account.comebackCount > 0) && (
+                <span className="account-badges">
+                  {account.sherlockCount > 0 && (
+                    <span className="account-badge" title={`Sherlock ×${account.sherlockCount} — solved in under 8 turns`}>
+                      🕵️{account.sherlockCount}
+                    </span>
+                  )}
+                  {account.untouchableCount > 0 && (
+                    <span className="account-badge" title={`Untouchable ×${account.untouchableCount} — won without ever being disproved`}>
+                      🛡️{account.untouchableCount}
+                    </span>
+                  )}
+                  {account.comebackCount > 0 && (
+                    <span className="account-badge" title={`Comeback Kid ×${account.comebackCount} — won as the last one standing`}>
+                      🔄{account.comebackCount}
+                    </span>
+                  )}
+                </span>
+              )}
               <button className="account-signout" onClick={handleSignOut} title="Sign out">
                 ×
               </button>
