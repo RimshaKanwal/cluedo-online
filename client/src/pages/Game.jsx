@@ -337,13 +337,11 @@ export default function Game({ code, playerId, state, onLeave }) {
           <div className="cb-status">
             <span className={`turn-dot ${isMyTurn ? "on" : ""}`} />
             <span className="status-line">{statusLine}</span>
+            <DiceDisplay diceValue={turnState.diceValue} rollerName={currentPlayer?.name} />
           </div>
           <div className="cb-actions">
             {myActive && turnState.diceValue == null && !turnState.hasMoved && !pending && (
               <button className="cb-btn dice" onClick={rollDice}><span className="cb-ico">🎲</span>Roll Dice</button>
-            )}
-            {myActive && turnState.diceValue != null && !turnState.hasMoved && (
-              <span className="dice-value">🎲 {turnState.diceValue}</span>
             )}
             {myActive && !turnState.hasMoved && !pending && passageTo && (
               <button className="cb-btn passage" onClick={usePassage}><span className="cb-ico">🚪</span>Passage <small>→ {passageTo}</small></button>
@@ -674,6 +672,48 @@ function LastSuggestionRecap({ lastSuggestion, players, selfId, shownCard }) {
         </div>
       )}
     </div>
+  );
+}
+
+// Visible to every player (not just whoever rolled) — briefly rattles
+// through random faces before landing on the real value, so a roll reads
+// as an event everyone at the table notices, not just a number in the log.
+function DiceDisplay({ diceValue, rollerName }) {
+  const [shown, setShown] = useState(diceValue);
+  const [rolling, setRolling] = useState(false);
+  const prevValue = useRef(diceValue);
+
+  useEffect(() => {
+    if (diceValue == null) {
+      prevValue.current = null;
+      setShown(null);
+      setRolling(false);
+      return;
+    }
+    if (prevValue.current === diceValue) return; // already showing this roll
+    prevValue.current = diceValue;
+    setRolling(true);
+    let ticks = 0;
+    const id = setInterval(() => {
+      ticks += 1;
+      if (ticks >= 8) {
+        clearInterval(id);
+        setShown(diceValue);
+        setRolling(false);
+      } else {
+        setShown(1 + Math.floor(Math.random() * 12));
+      }
+    }, 60);
+    return () => clearInterval(id);
+  }, [diceValue]);
+
+  if (shown == null) return null;
+  return (
+    <span className={`dice-display ${rolling ? "rolling" : "settled"}`}>
+      <span className="dice-display-face">🎲</span>
+      <span className="dice-display-num">{shown}</span>
+      {rollerName && <span className="dice-display-roller">{rollerName}</span>}
+    </span>
   );
 }
 

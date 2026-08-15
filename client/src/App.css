@@ -795,6 +795,63 @@ button.secondary {
   color: #1a1406;
 }
 
+/* Broadcast to everyone at the table, not just whoever rolled. */
+.dice-display {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 10px;
+  background: var(--gold);
+  color: #1a1406;
+  font-weight: 800;
+  box-shadow: 0 2px 8px rgba(216, 180, 92, 0.35);
+  animation: dice-pop 0.25s cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+
+.dice-display.rolling {
+  animation: dice-shake 0.12s ease-in-out infinite;
+}
+
+.dice-display-face {
+  font-size: 1.1rem;
+  display: inline-block;
+}
+
+.dice-display.rolling .dice-display-face {
+  animation: dice-spin 0.4s linear infinite;
+}
+
+.dice-display-num {
+  font-size: 1.05rem;
+  min-width: 1.1em;
+  text-align: center;
+}
+
+.dice-display-roller {
+  font-size: 0.68rem;
+  font-weight: 700;
+  opacity: 0.75;
+  border-left: 1px solid rgba(26, 20, 6, 0.35);
+  padding-left: 6px;
+}
+
+@keyframes dice-pop {
+  0% { transform: scale(0.5); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes dice-shake {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(-8deg); }
+}
+
+@keyframes dice-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
 /* Right drawer */
 .side-drawer {
   flex: 0 0 330px;
